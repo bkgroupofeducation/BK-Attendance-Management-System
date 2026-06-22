@@ -164,6 +164,7 @@ const Sidebar = ({ logout, user }) => {
 
         <li><Link to="/attendance" style={{ display: 'block', padding: '15px 20px', color: '#ffffff', textDecoration: 'none', borderBottom: '1px solid #34495e', fontWeight: '500', fontSize: '15px' }}>📋 Attendance</Link></li>
         <li><Link to="/teachers" style={{ display: 'block', padding: '15px 20px', color: '#ffffff', textDecoration: 'none', borderBottom: '1px solid #34495e', fontWeight: '500', fontSize: '15px' }}>👨🏫 Teachers</Link></li>
+        <li><Link to="/devices" style={{ display: 'block', padding: '15px 20px', color: '#ffffff', textDecoration: 'none', borderBottom: '1px solid #34495e', fontWeight: '500', fontSize: '15px' }}>🔒 Devices</Link></li>
         <li><Link to="/simulator" style={{ display: 'block', padding: '15px 20px', color: '#ffffff', textDecoration: 'none', borderBottom: '1px solid #34495e', fontWeight: '500', fontSize: '15px' }}>🔬 Simulator</Link></li>
         <li style={{ padding: '15px 20px' }}>
           <button onClick={logout} style={{ padding: '8px 16px', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '15px', fontWeight: '500', background: '#e74c3c', color: 'white', width: '100%' }}>🚪 Logout</button>
@@ -207,39 +208,82 @@ const Dashboard = () => {
   const [stats, setStats] = useState(null);
   const [recent, setRecent] = useState([]);
   const [livePunches, setLivePunches] = useState([]);
+  const [userMap, setUserMap] = useState({});
+  const [lastScanToast, setLastScanToast] = useState(null);
+  const toastRef = React.useRef(null);
 
-  useEffect(() => { 
-    api.get('/admin/dashboard').then(res => { setStats(res.data.stats); setRecent(res.data.recentAttendance); }); 
-    
-    // Listen for live biometric punches
-    socket.on('live_punch', (data) => {
-        setLivePunches(prev => [data, ...prev].slice(0, 5)); // keep last 5
+  useEffect(() => {
+    api.get('/admin/dashboard').then(res => {
+      setStats(res.data.stats);
+      setRecent(res.data.recentAttendance);
     });
 
-    return () => socket.off('live_punch');
+    // Load user ID → name map
+    api.get('/users/map').then(res => setUserMap(res.data)).catch(() => {});
+
+    const handlePunch = (data) => {
+      const entry = { ...data, id: Date.now(), time: new Date().toLocaleTimeString() };
+      setLivePunches(prev => [entry, ...prev].slice(0, 10));
+      setLastScanToast(entry);
+      if (toastRef.current) clearTimeout(toastRef.current);
+      toastRef.current = setTimeout(() => setLastScanToast(null), 5000);
+    };
+
+    socket.on('live_punch', handlePunch);
+    return () => {
+      socket.off('live_punch', handlePunch);
+      if (toastRef.current) clearTimeout(toastRef.current);
+    };
   }, []);
 
   if (!stats) return <div>Loading dashboard...</div>;
+
+  const getInitials = (name) => name ? name.split(' ').map(w => w[0]).join('').toUpperCase().slice(0,2) : '??';
+  const resolvedName = (punch) => punch.userName || userMap[String(punch.userId)] || `User ${punch.userId}`;
+
   return (
     <div>
-      {/* Live Scan Notification Area */}
-      {livePunches.length > 0 && (
-        <div style={{ background: '#27ae60', color: 'white', padding: '15px', borderRadius: '8px', marginBottom: '20px', display: 'flex', flexDirection: 'column', gap: '10px', boxShadow: '0 4px 12px rgba(39, 174, 96, 0.3)', animation: 'fadeIn 0.5s ease-out' }}>
-            <h3 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '10px' }}>
-                <span className="dot online" style={{ background: 'white' }}></span> LIVE BIOMETRIC SCAN
-            </h3>
-            {livePunches.map((punch, idx) => (
-                <div key={idx} style={{ background: 'rgba(255,255,255,0.2)', padding: '10px', borderRadius: '6px', fontSize: '15px' }}>
-                    <strong>User ID:</strong> {punch.userId} &nbsp;|&nbsp; 
-                    <strong>Time:</strong> {punch.timestamp} &nbsp;|&nbsp; 
-                    <strong>Machine SN:</strong> {punch.deviceSn}
-                </div>
-            ))}
+      {/* LIVE TOAST */}
+      {lastScanToast && (
+        <div style={{
+          position: 'fixed', top: '20px', right: '20px', zIndex: 9999,
+          background: 'linear-gradient(135deg, #0f0c29, #302b63, #24243e)',
+          color: 'white', borderRadius: '16px', padding: '18px 22px',
+          boxShadow: '0 8px 32px rgba(0,0,0,0.5)', minWidth: '300px',
+          border: '1px solid rgba(102,126,234,0.5)',
+          animation: 'toastIn 0.4s cubic-bezier(0.175,0.885,0.32,1.275)',
+          display: 'flex', alignItems: 'center', gap: '14px'
+        }}>
+          <div style={{
+            width: '46px', height: '46px', borderRadius: '50%',
+            background: 'linear-gradient(135deg, #667eea, #764ba2)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '22px', flexShrink: 0
+          }}>👆</div>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontSize: '10px', color: '#a0a8d0', fontWeight: 700, letterSpacing: '1.5px', textTransform: 'uppercase', marginBottom: '3px' }}>
+              🔴 LIVE FINGERPRINT SCAN
+            </div>
+            <div style={{ fontSize: '17px', fontWeight: 800 }}>{resolvedName(lastScanToast)}</div>
+            <div style={{ fontSize: '12px', color: '#8892b0', marginTop: '2px' }}>
+              📟 {lastScanToast.deviceSn} &nbsp;•&nbsp; 🕐 {lastScanToast.time}
+            </div>
+          </div>
+          <button onClick={() => setLastScanToast(null)} style={{ background: 'none', border: 'none', color: '#8892b0', fontSize: '20px', cursor: 'pointer' }}>✕</button>
         </div>
       )}
+
+      <style>{`
+        @keyframes toastIn { from { transform: translateX(110%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+        @keyframes punchSlide { from { opacity: 0; transform: translateY(-10px); } to { opacity: 1; transform: translateY(0); } }
+        @keyframes pulseDot { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:.5;transform:scale(1.6)} }
+        .live-dot-red { width:10px;height:10px;border-radius:50%;background:#e74c3c;animation:pulseDot 1.2s infinite;display:inline-block;margin-right:8px; }
+        .live-dot-green { width:10px;height:10px;border-radius:50%;background:#27ae60;animation:pulseDot 1.5s infinite;display:inline-block;margin-right:6px; }
+        .punch-row { animation: punchSlide 0.35s ease-out; }
+      `}</style>
+
       <div className="stats-grid">
         <div className="stat-card">
-            <h3>👨🎓 Total Users</h3>
+            <h3>👨‍🎓 Total Users</h3>
             <div className="number">{stats.totalUsers}</div>
             <div className="change">↑ 12 new today</div>
         </div>
@@ -255,9 +299,78 @@ const Dashboard = () => {
         </div>
         <div className="stat-card alert">
             <h3>⚡ Active Biometrics</h3>
-            <div className="number">3/4</div>
-            <div className="change" style={{ color: '#e74c3c' }}>⚠️ 1 offline</div>
+            <div className="number">1/1</div>
+            <div className="change" style={{ color: '#27ae60' }}>✅ All online</div>
         </div>
+      </div>
+
+      {/* LIVE SYNC FEED - FULL WIDTH */}
+      <div className="dashboard-card" style={{ marginBottom: '20px' }}>
+        <div className="card-header">
+          <h2 style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <span className={livePunches.length > 0 ? 'live-dot-red' : 'live-dot-green'}></span>
+            Live Sync Feed
+            <span style={{
+              fontSize: '11px', fontWeight: 700, padding: '3px 12px',
+              background: livePunches.length > 0 ? '#e74c3c' : '#27ae60',
+              color: 'white', borderRadius: '20px', letterSpacing: '0.5px'
+            }}>{livePunches.length > 0 ? `${livePunches.length} SCANS TODAY` : 'WAITING...'}</span>
+          </h2>
+          <button className="btn" style={{ background: '#eee', fontSize: '13px' }} onClick={() => setLivePunches([])}>🗑 Clear</button>
+        </div>
+
+        {livePunches.length === 0 ? (
+          <div style={{
+            padding: '40px 20px', textAlign: 'center',
+            background: 'linear-gradient(135deg, #f8f9ff, #f0f4ff)',
+            borderRadius: '10px', margin: '0'
+          }}>
+            <div style={{ fontSize: '42px', marginBottom: '12px' }}>👆</div>
+            <div style={{ fontSize: '17px', fontWeight: 600, color: '#555', marginBottom: '6px' }}>Waiting for fingerprint scan...</div>
+            <div style={{ fontSize: '13px', color: '#888' }}>
+              Scan your finger on <strong>Bio System (x 2006)</strong> • Scans appear here in real time
+            </div>
+            <div style={{ marginTop: '16px', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '8px' }}>
+              <span className="live-dot-green"></span>
+              <span style={{ fontSize: '13px', color: '#27ae60', fontWeight: 600 }}>Socket connected → 192.168.0.106:8080</span>
+            </div>
+          </div>
+        ) : (
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '12px', padding: '4px 0' }}>
+            {livePunches.map((punch, idx) => (
+              <div key={punch.id || idx} className="punch-row" style={{
+                flex: '1 1 220px', maxWidth: '260px',
+                background: idx === 0
+                  ? 'linear-gradient(135deg, #667eea15, #764ba215)'
+                  : '#f8f9fa',
+                border: idx === 0 ? '2px solid #667eea60' : '1px solid #eee',
+                borderRadius: '12px', padding: '14px', position: 'relative'
+              }}>
+                {idx === 0 && (
+                  <div style={{
+                    position: 'absolute', top: '8px', right: '8px',
+                    background: '#667eea', color: 'white',
+                    fontSize: '9px', fontWeight: 800, padding: '2px 7px',
+                    borderRadius: '20px', letterSpacing: '1px'
+                  }}>NEW</div>
+                )}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                  <div style={{
+                    width: '40px', height: '40px', borderRadius: '50%', flexShrink: 0,
+                    background: idx === 0 ? 'linear-gradient(135deg, #667eea, #764ba2)' : '#bdc3c7',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    color: 'white', fontWeight: 800, fontSize: '14px'
+                  }}>{getInitials(resolvedName(punch))}</div>
+                  <div>
+                    <div style={{ fontWeight: 700, fontSize: '14px', marginBottom: '2px' }}>{resolvedName(punch)}</div>
+                    <div style={{ fontSize: '11px', color: '#666' }}>ID: {punch.userId}</div>
+                    <div style={{ fontSize: '11px', color: '#888', marginTop: '2px' }}>🕐 {punch.time || punch.timestamp}</div>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
       <div className="main-grid">
@@ -347,31 +460,19 @@ const Dashboard = () => {
                 </div>
                 <div style={{ maxHeight: '200px', overflowY: 'auto' }}>
                     <div className="admission-item">
-                        <div>
-                            <div className="name">Ayesha Fatima</div>
-                            <div className="class">Class 10-A • Parent: Mr. Khan</div>
-                        </div>
+                        <div><div className="name">Ayesha Fatima</div><div className="class">Class 10-A • Parent: Mr. Khan</div></div>
                         <span className="status pending">Pending</span>
                     </div>
                     <div className="admission-item">
-                        <div>
-                            <div className="name">Rohan Mehta</div>
-                            <div className="class">Class 8-B • Parent: Mrs. Mehta</div>
-                        </div>
+                        <div><div className="name">Rohan Mehta</div><div className="class">Class 8-B • Parent: Mrs. Mehta</div></div>
                         <span className="status pending">Pending</span>
                     </div>
                     <div className="admission-item">
-                        <div>
-                            <div className="name">Priya Singh</div>
-                            <div className="class">Class 9-C • Parent: Mr. Singh</div>
-                        </div>
+                        <div><div className="name">Priya Singh</div><div className="class">Class 9-C • Parent: Mr. Singh</div></div>
                         <span className="status approved">Approved</span>
                     </div>
                     <div className="admission-item">
-                        <div>
-                            <div className="name">Ali Hassan</div>
-                            <div className="class">Class 7-A • Parent: Mrs. Hassan</div>
-                        </div>
+                        <div><div className="name">Ali Hassan</div><div className="class">Class 7-A • Parent: Mrs. Hassan</div></div>
                         <span className="status pending">Pending</span>
                     </div>
                 </div>
@@ -381,38 +482,15 @@ const Dashboard = () => {
             </div>
 
             <div className="dashboard-card">
-                <h2 style={{ fontSize: '18px', marginBottom: '10px' }}>🔒 Biometric Devices</h2>
+                <h2 style={{ fontSize: '18px', marginBottom: '14px' }}>🔒 Biometric Devices</h2>
                 <div className="biometric-status">
                     <span className="dot online"></span>
                     <div>
-                        <strong>Main Gate</strong>
-                        <div style={{ fontSize: '12px', color: '#666' }}>Last sync: 10:32 AM</div>
+                        <strong>Bio System (x 2006)</strong>
+                        <div style={{ fontSize: '12px', color: '#666' }}>SN: NYU7260401606</div>
+                        <div style={{ fontSize: '11px', color: '#27ae60' }}>Last sync: just now</div>
                     </div>
-                    <span style={{ marginLeft: 'auto', color: '#27ae60' }}>✓ Online</span>
-                </div>
-                <div className="biometric-status">
-                    <span className="dot online"></span>
-                    <div>
-                        <strong>Staff Entrance</strong>
-                        <div style={{ fontSize: '12px', color: '#666' }}>Last sync: 10:30 AM</div>
-                    </div>
-                    <span style={{ marginLeft: 'auto', color: '#27ae60' }}>✓ Online</span>
-                </div>
-                <div className="biometric-status" style={{ background: '#fff3cd' }}>
-                    <span className="dot offline"></span>
-                    <div>
-                        <strong>Teacher Room</strong>
-                        <div style={{ fontSize: '12px', color: '#666' }}>Last sync: 09:15 AM</div>
-                    </div>
-                    <span style={{ marginLeft: 'auto', color: '#e74c3c' }}>⚠️ Offline</span>
-                </div>
-                <div className="biometric-status">
-                    <span className="dot online"></span>
-                    <div>
-                        <strong>Lab Entrance</strong>
-                        <div style={{ fontSize: '12px', color: '#666' }}>Last sync: 10:28 AM</div>
-                    </div>
-                    <span style={{ marginLeft: 'auto', color: '#27ae60' }}>✓ Online</span>
+                    <span style={{ marginLeft: 'auto', color: '#27ae60', fontWeight: 600 }}>✓ Online</span>
                 </div>
             </div>
 
@@ -427,11 +505,6 @@ const Dashboard = () => {
                     <div className="time">09:45 AM • Sent</div>
                     <div className="message">⚠️ Rahul Sharma arrived late (9:20 AM)</div>
                     <div style={{ fontSize: '11px', color: '#e67e22' }}>Sent to: +91 87654 32109</div>
-                </div>
-                <div className="sms-log">
-                    <div className="time">08:30 AM • Sent</div>
-                    <div className="message">📊 Daily report to Main Sir - 92% present</div>
-                    <div style={{ fontSize: '11px', color: '#3498db' }}>Sent to: +91 78901 23456</div>
                 </div>
                 <div style={{ marginTop: '10px' }}>
                     <button className="btn btn-primary" style={{ width: '100%' }}>📱 Send Manual SMS</button>
@@ -754,6 +827,315 @@ const NewEnquiryPage = () => {
   );
 };
 
+// --- DEVICES PAGE ---
+const DevicesPage = () => {
+  const [devices, setDevices] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [editingDevice, setEditingDevice] = useState(null);
+  const [newName, setNewName] = useState('');
+  const [liveScans, setLiveScans] = useState([]);
+  const [userMap, setUserMap] = useState({});
+  const [toast, setToast] = useState(null);
+  const toastTimerRef = React.useRef(null);
+
+  const fetchDevices = () => {
+    setLoading(true);
+    api.get('/devices')
+      .then(res => { setDevices(res.data); setLoading(false); })
+      .catch(err => { console.error(err); setLoading(false); });
+  };
+
+  useEffect(() => {
+    fetchDevices();
+
+    // Load user ID → name map
+    api.get('/users/map').then(res => setUserMap(res.data)).catch(() => {});
+
+    // Listen for live biometric punches via Socket.io
+    const handleLivePunch = (data) => {
+      const scanEntry = {
+        ...data,
+        id: Date.now(),
+        receivedAt: new Date().toLocaleTimeString()
+      };
+
+      // Add to live feed (keep last 20)
+      setLiveScans(prev => [scanEntry, ...prev].slice(0, 20));
+
+      // Show pop-up toast
+      setToast(scanEntry);
+      if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+      toastTimerRef.current = setTimeout(() => setToast(null), 5000);
+
+      // Refresh device status to update lastActive
+      fetchDevices();
+    };
+
+    socket.on('live_punch', handleLivePunch);
+    return () => {
+      socket.off('live_punch', handleLivePunch);
+      if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+    };
+  }, []);
+
+  const handleRename = (e) => {
+    e.preventDefault();
+    if (!newName.trim() || !editingDevice) return;
+    api.post('/devices/rename', { serialNumber: editingDevice.serialNumber, name: newName })
+      .then(() => {
+        setDevices(devices.map(d =>
+          d.serialNumber === editingDevice.serialNumber ? { ...d, name: newName } : d
+        ));
+        setEditingDevice(null);
+        setNewName('');
+      })
+      .catch(err => console.error(err));
+  };
+
+  const getInitials = (name) => name ? name.split(' ').map(w => w[0]).join('').toUpperCase().slice(0,2) : '??';
+  const resolvedName = (scan) => scan.userName || userMap[String(scan.userId)] || `User ${scan.userId}`;
+
+  const toastStyle = {
+    position: 'fixed', top: '24px', right: '24px', zIndex: 9999,
+    background: 'linear-gradient(135deg, #1a1a2e 0%, #16213e 100%)',
+    color: 'white', borderRadius: '16px', padding: '20px 24px',
+    boxShadow: '0 8px 32px rgba(0,0,0,0.4)', minWidth: '320px',
+    border: '1px solid rgba(102,126,234,0.4)',
+    animation: 'slideInRight 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275)',
+    display: 'flex', alignItems: 'center', gap: '16px'
+  };
+
+  return (
+    <div>
+      {/* LIVE TOAST NOTIFICATION */}
+      {toast && (
+        <div style={toastStyle}>
+          <div style={{
+            width: '48px', height: '48px', borderRadius: '50%',
+            background: 'linear-gradient(135deg, #667eea, #764ba2)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            color: 'white', fontWeight: '800', fontSize: '16px', flexShrink: 0
+          }}>{getInitials(resolvedName(toast))}</div>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontSize: '11px', color: '#a0a8c0', fontWeight: '600', letterSpacing: '1px', textTransform: 'uppercase', marginBottom: '4px' }}>
+              🔴 Live Scan Detected
+            </div>
+            <div style={{ fontSize: '16px', fontWeight: '700', marginBottom: '2px' }}>
+              {resolvedName(toast)}
+            </div>
+            <div style={{ fontSize: '12px', color: '#8892b0' }}>
+              ID: {toast.userId} &nbsp;•&nbsp; 📟 {toast.deviceSn} &nbsp;•&nbsp; 🕐 {toast.receivedAt}
+            </div>
+          </div>
+          <button onClick={() => setToast(null)} style={{
+            background: 'transparent', border: 'none', color: '#8892b0',
+            fontSize: '18px', cursor: 'pointer', padding: '4px', lineHeight: 1
+          }}>✕</button>
+        </div>
+      )}
+
+      {/* CSS Animations */}
+      <style>{`
+        @keyframes slideInRight {
+          from { transform: translateX(120%); opacity: 0; }
+          to { transform: translateX(0); opacity: 1; }
+        }
+        @keyframes pulse-dot {
+          0%, 100% { opacity: 1; transform: scale(1); }
+          50% { opacity: 0.5; transform: scale(1.5); }
+        }
+        @keyframes scanFadeIn {
+          from { opacity: 0; transform: translateY(-12px); }
+          to { opacity: 1; transform: translateY(0); }
+        }
+        .live-scan-row { animation: scanFadeIn 0.4s ease-out; }
+        .pulse-red {
+          width: 10px; height: 10px; border-radius: 50%; background: #e74c3c;
+          animation: pulse-dot 1.2s ease-in-out infinite;
+          display: inline-block; margin-right: 8px;
+        }
+        .pulse-green {
+          width: 10px; height: 10px; border-radius: 50%; background: #27ae60;
+          animation: pulse-dot 1.2s ease-in-out infinite;
+          display: inline-block; margin-right: 8px;
+        }
+      `}</style>
+
+      {/* DEVICES TABLE */}
+      <div className="dashboard-card" style={{ marginBottom: '20px' }}>
+        <div className="card-header">
+          <h2>🔒 Biometric Devices Manager</h2>
+          <div className="actions">
+            <button className="btn btn-primary" onClick={fetchDevices}>🔄 Refresh Status</button>
+          </div>
+        </div>
+
+        {loading ? (
+          <div style={{ padding: '20px', textAlign: 'center', color: '#666' }}>Loading devices...</div>
+        ) : (
+          <table className="dashboard-table">
+            <thead>
+              <tr>
+                <th>Device Name</th>
+                <th>Serial Number</th>
+                <th>Last Active / Ping</th>
+                <th>Status</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {devices.map((device, idx) => (
+                <tr key={device.serialNumber || idx}>
+                  <td>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                      <span style={{ fontSize: '22px' }}>📟</span>
+                      <div>
+                        <strong style={{ fontSize: '15px' }}>{device.name}</strong>
+                        <div style={{ fontSize: '12px', color: '#888' }}>MAC: 00:17:61:10:35:c5</div>
+                      </div>
+                    </div>
+                  </td>
+                  <td><code style={{ background: '#f0f2f5', padding: '4px 8px', borderRadius: '4px', fontSize: '13px' }}>{device.serialNumber}</code></td>
+                  <td>{new Date(device.lastActive).toLocaleString()}</td>
+                  <td>
+                    <span className={`status ${device.status === 'online' ? 'present' : 'absent'}`}>
+                      {device.status === 'online' ? '● Online' : '● Offline'}
+                    </span>
+                  </td>
+                  <td>
+                    <button
+                      className="btn btn-warning"
+                      style={{ padding: '4px 10px', fontSize: '13px' }}
+                      onClick={() => { setEditingDevice(device); setNewName(device.name); }}
+                    >✏️ Rename</button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
+
+      {/* LIVE SYNC PANEL */}
+      <div className="dashboard-card">
+        <div className="card-header">
+          <h2 style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <span className={liveScans.length > 0 ? 'pulse-red' : 'pulse-green'}></span>
+            Live Sync Feed
+            <span style={{
+              fontSize: '12px', fontWeight: '600', padding: '3px 10px',
+              background: liveScans.length > 0 ? '#e74c3c' : '#27ae60',
+              color: 'white', borderRadius: '20px', letterSpacing: '0.5px'
+            }}>
+              {liveScans.length > 0 ? `${liveScans.length} SCANS` : 'WAITING FOR SCAN'}
+            </span>
+          </h2>
+          <button className="btn" style={{ background: '#eee', fontSize: '13px' }} onClick={() => setLiveScans([])}>
+            🗑 Clear
+          </button>
+        </div>
+
+        {liveScans.length === 0 ? (
+          <div style={{
+            padding: '60px 20px', textAlign: 'center',
+            background: 'linear-gradient(135deg, #f8f9ff, #f0f4ff)',
+            borderRadius: '8px', margin: '10px 0'
+          }}>
+            <div style={{ fontSize: '48px', marginBottom: '16px' }}>👆</div>
+            <div style={{ fontSize: '18px', fontWeight: '600', color: '#555', marginBottom: '8px' }}>
+              Waiting for fingerprint scan...
+            </div>
+            <div style={{ fontSize: '14px', color: '#888' }}>
+              Ask someone to scan their fingerprint on the <strong>Bio System (x 2006)</strong> device.<br />
+              Their scan will appear here instantly in real time.
+            </div>
+            <div style={{ marginTop: '20px', display: 'flex', justifyContent: 'center', gap: '8px', alignItems: 'center' }}>
+              <span className="pulse-green"></span>
+              <span style={{ fontSize: '13px', color: '#27ae60', fontWeight: '600' }}>
+                Socket connected • Listening on port 8080
+              </span>
+            </div>
+          </div>
+        ) : (
+          <div>
+            <div style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))',
+              gap: '12px',
+              padding: '10px 0'
+            }}>
+              {liveScans.map((scan, idx) => (
+                <div key={scan.id || idx} className="live-scan-row" style={{
+                  background: idx === 0
+                    ? 'linear-gradient(135deg, #667eea22, #764ba222)'
+                    : '#f8f9fa',
+                  border: idx === 0 ? '2px solid #667eea55' : '1px solid #eee',
+                  borderRadius: '12px', padding: '16px',
+                  position: 'relative', overflow: 'hidden'
+                }}>
+                  {idx === 0 && (
+                    <div style={{
+                      position: 'absolute', top: '10px', right: '10px',
+                      background: '#667eea', color: 'white',
+                      fontSize: '10px', fontWeight: '700', padding: '2px 8px',
+                      borderRadius: '20px', letterSpacing: '1px'
+                    }}>NEW</div>
+                  )}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                    <div style={{
+                      width: '44px', height: '44px', borderRadius: '50%',
+                      background: idx === 0
+                        ? 'linear-gradient(135deg, #667eea, #764ba2)'
+                        : 'linear-gradient(135deg, #bdc3c7, #95a5a6)',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      color: 'white', fontWeight: '800', fontSize: '15px', flexShrink: 0
+                    }}>{getInitials(resolvedName(scan))}</div>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontWeight: '700', fontSize: '15px', marginBottom: '2px' }}>
+                        {resolvedName(scan)}
+                      </div>
+                      <div style={{ fontSize: '12px', color: '#666' }}>
+                        ID: {scan.userId} &nbsp;•&nbsp; 📟 {scan.deviceSn}
+                      </div>
+                      <div style={{ fontSize: '12px', color: '#888', marginTop: '2px' }}>
+                        🕐 {scan.receivedAt}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* RENAME MODAL */}
+      {editingDevice && (
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 999 }}>
+          <div style={{ background: 'white', padding: '30px', borderRadius: '12px', width: '350px', boxShadow: '0 4px 20px rgba(0,0,0,0.2)' }}>
+            <h3 style={{ marginTop: 0, marginBottom: '15px' }}>✏️ Rename Device</h3>
+            <p style={{ fontSize: '13px', color: '#666', marginBottom: '15px' }}>
+              Set a friendly name for: <code>{editingDevice.serialNumber}</code>
+            </p>
+            <form onSubmit={handleRename}>
+              <input
+                type="text" value={newName} onChange={e => setNewName(e.target.value)}
+                placeholder="e.g. Main Gate, Library..."
+                style={{ width: '100%', padding: '12px', borderRadius: '6px', border: '1px solid #ddd', fontSize: '14px', marginBottom: '20px', boxSizing: 'border-box' }}
+                required autoFocus
+              />
+              <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
+                <button type="button" className="btn" style={{ background: '#eee', color: '#333' }} onClick={() => setEditingDevice(null)}>Cancel</button>
+                <button type="submit" className="btn btn-primary">Save Changes</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
 // --- MAIN APP ---
 function App() {
   const [token, setToken] = useState(localStorage.getItem('token'));
@@ -777,6 +1159,7 @@ function App() {
             <Route path="/attendance" element={<ProtectedRoute><Layout logout={logout} user={user}><AttendancePage /></Layout></ProtectedRoute>} />
             <Route path="/admissions" element={<ProtectedRoute><Layout logout={logout} user={user}><AdmissionsPage /></Layout></ProtectedRoute>} />
             <Route path="/teachers" element={<ProtectedRoute><Layout logout={logout} user={user}><TeachersPage /></Layout></ProtectedRoute>} />
+            <Route path="/devices" element={<ProtectedRoute><Layout logout={logout} user={user}><DevicesPage /></Layout></ProtectedRoute>} />
             <Route path="/simulator" element={<ProtectedRoute><Layout logout={logout} user={user}><Simulator /></Layout></ProtectedRoute>} />
             <Route path="/enquiries/new" element={<ProtectedRoute><Layout logout={logout} user={user}><NewEnquiryPage /></Layout></ProtectedRoute>} />
             <Route path="*" element={<Navigate to="/" replace />} />
