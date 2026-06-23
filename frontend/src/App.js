@@ -913,24 +913,19 @@ const TeachersPage = () => {
                   <label style={{ display: 'block', fontSize: '12px', color: '#666', marginBottom: '4px' }}>Out Time</label>
                   <input type="time" value={outTime} onChange={(e) => setOutTime(e.target.value)} style={{ padding: '8px', borderRadius: '4px', border: '1px solid #ddd' }} />
               </div>
-                  <strong style={{ fontSize: '16px' }}>{calc.hours}h {calc.remMins}m <span style={{ color: '#666', fontSize: '13px', fontWeight: 'normal' }}>({calc.minutes} mins)</span></strong>
-              </div>
-              <div style={{ borderLeft: '1px solid #eee', paddingLeft: '20px' }}>
-                  <div style={{ fontSize: '12px', color: '#888' }}>Base Rate</div>
-                  <strong style={{ fontSize: '14px', color: '#555' }}>₹ 700 / 1.5 hrs</strong>
-                  <div style={{ fontSize: '11px', color: '#888' }}>≈ ₹ 7.78 / minute</div>
-              </div>
-              {calc.deduction > 0 && (
-                  <div style={{ borderLeft: '1px solid #eee', paddingLeft: '20px' }}>
-                      <div style={{ fontSize: '12px', color: '#e74c3c' }}>Late/Early Penalty</div>
-                      <strong style={{ fontSize: '16px', color: '#e74c3c' }}>- ₹ {calc.deduction}</strong>
-                  </div>
-              )}
-              <div style={{ borderLeft: '1px solid #eee', paddingLeft: '20px' }}>
-                  <div style={{ fontSize: '12px', color: '#888' }}>Final Payoff</div>
-                  <strong style={{ fontSize: '20px', color: '#27ae60' }}>₹ {calc.payout}</strong>
+              
+              <div style={{ marginLeft: 'auto', textAlign: 'right' }}>
+                  <div style={{ fontSize: '12px', color: '#e74c3c', fontWeight: 'bold' }}>DEDUCTION: ₹ {calc.deduction}</div>
+                  <div style={{ fontSize: '24px', color: '#27ae60', fontWeight: 'bold' }}>FINAL PAY: ₹ {calc.payout}</div>
+                  <div style={{ fontSize: '12px', color: '#666' }}>Valid Work Time: {calc.hours}h {calc.remMins}m</div>
               </div>
           </div>
+          
+          <p style={{ margin: '10px 0 0 0', fontSize: '12px', color: '#666', lineHeight: '1.4' }}>
+              * <strong>Standard Shift:</strong> 07:30 AM to 09:00 AM (1.5 hours). <br/>
+              * <strong>Grace Period:</strong> In Time up to 07:35 AM is fully paid (calculated as 07:30 AM). <br/>
+              * <strong>Penalties:</strong> Arriving after 07:35 AM or leaving before 09:00 AM results in a per-minute pay deduction.
+          </p>
       </div>
     </div>
   );
