@@ -3,8 +3,7 @@ import { BrowserRouter as Router, Routes, Route, Link, Navigate, useLocation } f
 import { io } from 'socket.io-client';
 import api from './api';
 
-const backendHost = typeof window !== 'undefined' ? window.location.hostname : 'localhost';
-const socket = io(`http://${backendHost}:8080`);
+const socket = io('http://localhost:8080');
 const AuthContext = React.createContext(null);
 
 // --- LOGIN PAGE ---
@@ -211,50 +210,13 @@ const Dashboard = () => {
   const [livePunches, setLivePunches] = useState([]);
   const [userMap, setUserMap] = useState({});
   const [lastScanToast, setLastScanToast] = useState(null);
-  const [serverIp, setServerIp] = useState('127.0.0.1');
-  const [registeringUserId, setRegisteringUserId] = useState(null);
-  const [registeringUserName, setRegisteringUserName] = useState('');
-  const [registeringUserRole, setRegisteringUserRole] = useState('student');
-  const [users, setUsers] = useState([]);
-  const [punches, setPunches] = useState([]);
-  const [activeTab, setActiveTab] = useState('All');
   const toastRef = React.useRef(null);
-
-  const fetchInitialData = () => {
-    api.get('/users').then(res => setUsers(res.data)).catch(() => {});
-    api.get('/punches/today').then(res => setPunches(res.data)).catch(() => {});
-  };
-
-  const handleRegisterUser = (e) => {
-    e.preventDefault();
-    if (!registeringUserName.trim() || !registeringUserId) return;
-    api.post('/users', {
-      id: registeringUserId,
-      name: registeringUserName,
-      role: registeringUserRole || 'student',
-      fingerprint_id: String(registeringUserId)
-    })
-    .then(() => {
-      // Refresh userMap and users list
-      api.get('/users/map').then(res => setUserMap(res.data)).catch(() => {});
-      api.get('/users').then(res => setUsers(res.data)).catch(() => {});
-      setRegisteringUserId(null);
-      setRegisteringUserName('');
-    })
-    .catch(err => console.error(err));
-  };
 
   useEffect(() => {
     api.get('/admin/dashboard').then(res => {
       setStats(res.data.stats);
       setRecent(res.data.recentAttendance);
     });
-
-    // Fetch initial users and today's punches
-    fetchInitialData();
-
-    // Fetch server LAN IP info
-    api.get('/info').then(res => setServerIp(res.data.ip)).catch(() => {});
 
     // Load user ID → name map
     api.get('/users/map').then(res => setUserMap(res.data)).catch(() => {});
@@ -265,17 +227,6 @@ const Dashboard = () => {
       setLastScanToast(entry);
       if (toastRef.current) clearTimeout(toastRef.current);
       toastRef.current = setTimeout(() => setLastScanToast(null), 5000);
-
-      // Append new scan to punches so the Today's Attendance table updates in real time!
-      setPunches(prev => [
-        {
-          userId: data.userId,
-          timestamp: new Date().toISOString(),
-          deviceSn: data.deviceSn || 'unknown',
-          direction: data.direction || 'in'
-        },
-        ...prev
-      ]);
     };
 
     socket.on('live_punch', handlePunch);
@@ -289,60 +240,6 @@ const Dashboard = () => {
 
   const getInitials = (name) => name ? name.split(' ').map(w => w[0]).join('').toUpperCase().slice(0,2) : '??';
   const resolvedName = (punch) => punch.userName || userMap[String(punch.userId)] || `User ${punch.userId}`;
-
-  const getAttendanceRows = () => {
-    const punchesByUser = {};
-    punches.forEach(p => {
-      const uid = String(p.userId);
-      if (!punchesByUser[uid]) punchesByUser[uid] = [];
-      punchesByUser[uid].push(new Date(p.timestamp));
-    });
-
-    return users.map(user => {
-      const uid = String(user.id);
-      const fuid = String(user.fingerprint_id);
-      const userPunches = (punchesByUser[uid] || punchesByUser[fuid] || []).sort((a, b) => a - b);
-      
-      let inTime = '--:-- --';
-      let outTime = '--:-- --';
-      let status = 'Absent';
-
-      if (userPunches.length > 0) {
-        const firstPunch = userPunches[0];
-        inTime = firstPunch.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
-        
-        if (userPunches.length > 1) {
-          const lastPunch = userPunches[userPunches.length - 1];
-          outTime = lastPunch.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
-        }
-
-        const lateCutoff = new Date(firstPunch);
-        lateCutoff.setHours(9, 0, 0, 0); // 9:00 AM late cutoff
-        if (firstPunch > lateCutoff) {
-          const diffMin = Math.round((firstPunch - lateCutoff) / 60000);
-          status = `Late (${diffMin} min)`;
-        } else {
-          status = 'Present';
-        }
-      }
-
-      return {
-        ...user,
-        inTime,
-        outTime,
-        status
-      };
-    });
-  };
-
-  const filteredRows = getAttendanceRows().filter(row => {
-    if (activeTab === 'All') return true;
-    if (activeTab === 'Students') return row.role === 'student';
-    if (activeTab === 'Teachers') return row.role === 'teacher';
-    if (activeTab === 'Staff') return row.role === 'staff' || row.role === 'admin';
-    if (activeTab === 'Late') return row.status.startsWith('Late');
-    return true;
-  });
 
   return (
     <div>
@@ -431,11 +328,11 @@ const Dashboard = () => {
             <div style={{ fontSize: '42px', marginBottom: '12px' }}>👆</div>
             <div style={{ fontSize: '17px', fontWeight: 600, color: '#555', marginBottom: '6px' }}>Waiting for fingerprint scan...</div>
             <div style={{ fontSize: '13px', color: '#888' }}>
-              Scan your finger on <strong>Bio System (x 2006)</strong> • Configure ADMS IP to <strong>{serverIp}:8080</strong>
+              Scan your finger on <strong>Bio System (x 2006)</strong> • Scans appear here in real time
             </div>
             <div style={{ marginTop: '16px', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '8px' }}>
               <span className="live-dot-green"></span>
-              <span style={{ fontSize: '13px', color: '#27ae60', fontWeight: 600 }}>Socket connected → {serverIp}:8080</span>
+              <span style={{ fontSize: '13px', color: '#27ae60', fontWeight: 600 }}>Socket connected → 192.168.0.106:8080</span>
             </div>
           </div>
         ) : (
@@ -468,23 +365,6 @@ const Dashboard = () => {
                     <div style={{ fontWeight: 700, fontSize: '14px', marginBottom: '2px' }}>{resolvedName(punch)}</div>
                     <div style={{ fontSize: '11px', color: '#666' }}>ID: {punch.userId}</div>
                     <div style={{ fontSize: '11px', color: '#888', marginTop: '2px' }}>🕐 {punch.time || punch.timestamp}</div>
-                    {resolvedName(punch).startsWith('User ') && (
-                      <button
-                        onClick={() => {
-                          setRegisteringUserId(punch.userId);
-                          setRegisteringUserName('');
-                          setRegisteringUserRole('student');
-                        }}
-                        style={{
-                          background: 'none', border: 'none', color: '#667eea',
-                          fontSize: '11px', fontWeight: 600, cursor: 'pointer',
-                          padding: '0', textDecoration: 'underline', marginTop: '4px',
-                          display: 'block'
-                        }}
-                      >
-                        ✏️ Associate Name
-                      </button>
-                    )}
                   </div>
                 </div>
               </div>
@@ -498,22 +378,17 @@ const Dashboard = () => {
             <div className="card-header">
                 <h2>📋 Live Attendance - Today</h2>
                 <div className="actions">
-                    <button className="btn btn-primary" onClick={fetchInitialData}>🔄 Refresh</button>
+                    <button className="btn btn-primary" onClick={() => window.location.reload()}>🔄 Refresh</button>
                     <button className="btn btn-success">📥 Export</button>
                 </div>
             </div>
             
             <div className="tabs">
-                {['All', 'Students', 'Teachers', 'Staff', 'Late'].map(tab => (
-                    <span
-                      key={tab}
-                      className={`tab ${activeTab === tab ? 'active' : ''}`}
-                      onClick={() => setActiveTab(tab)}
-                      style={{ cursor: 'pointer' }}
-                    >
-                      {tab}
-                    </span>
-                ))}
+                <span className="tab active">All</span>
+                <span className="tab">Students</span>
+                <span className="tab">Teachers</span>
+                <span className="tab">Staff</span>
+                <span className="tab">Late</span>
             </div>
             
             <table className="dashboard-table">
@@ -527,38 +402,62 @@ const Dashboard = () => {
                     </tr>
                 </thead>
                 <tbody id="attendanceTable">
-                    {filteredRows.map(row => (
-                      <tr key={row.id}>
-                        <td>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                            <div className="avatar" style={{ background: row.role === 'teacher' ? '#3498db' : row.role === 'student' ? '#2ecc71' : '#e74c3c' }}>
-                              {getInitials(row.name)}
-                            </div>
-                            {row.name}
-                          </div>
-                        </td>
-                        <td style={{ textTransform: 'capitalize' }}>{row.role}</td>
-                        <td>{row.inTime}</td>
-                        <td>{row.outTime}</td>
-                        <td>
-                          <span className={`status ${row.status === 'Present' ? 'present' : row.status === 'Absent' ? 'absent' : 'late' || row.status.startsWith('Late')}`}>
-                            {row.status}
-                          </span>
-                        </td>
-                      </tr>
+                    {livePunches.map((punch, idx) => (
+                        <tr key={`live-${idx}`} style={{ background: '#f8f9ff', animation: 'punchSlide 0.5s ease-out' }}>
+                            <td>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                    <div className="avatar" style={{ background: 'linear-gradient(135deg, #667eea, #764ba2)' }}>
+                                        {getInitials(resolvedName(punch))}
+                                    </div>
+                                    {resolvedName(punch)} <span style={{ fontSize: '10px', background: '#667eea', color: 'white', padding: '2px 6px', borderRadius: '10px', marginLeft: '5px' }}>NEW</span>
+                                </div>
+                            </td>
+                            <td>User</td>
+                            <td>{punch.time || punch.timestamp}</td>
+                            <td>--:-- --</td>
+                            <td><span className="status present">Present</span></td>
+                        </tr>
                     ))}
-                    {filteredRows.length === 0 && (
-                      <tr>
-                        <td colSpan="5" style={{ textAlign: 'center', padding: '20px', color: '#888' }}>
-                          No attendance records found for this category.
-                        </td>
-                      </tr>
-                    )}
+                    <tr>
+                        <td><div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}><div className="avatar">A</div> Ahmed Khan</div></td>
+                        <td>Teacher</td>
+                        <td>08:15 AM</td>
+                        <td>--:-- --</td>
+                        <td><span className="status present">Present</span></td>
+                    </tr>
+                    <tr>
+                        <td><div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}><div className="avatar">S</div> Sarah Ali</div></td>
+                        <td>Student</td>
+                        <td>08:45 AM</td>
+                        <td>02:30 PM</td>
+                        <td><span className="status present">Present</span></td>
+                    </tr>
+                    <tr>
+                        <td><div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}><div className="avatar">R</div> Rahul Sharma</div></td>
+                        <td>Student</td>
+                        <td>09:20 AM</td>
+                        <td>--:-- --</td>
+                        <td><span className="status late">Late (20 min)</span></td>
+                    </tr>
+                    <tr>
+                        <td><div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}><div className="avatar" style={{ background: '#e74c3c' }}>M</div> Mrs. Patel</div></td>
+                        <td>Teacher</td>
+                        <td>--:-- --</td>
+                        <td>--:-- --</td>
+                        <td><span className="status absent">Absent</span></td>
+                    </tr>
+                    <tr>
+                        <td><div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}><div className="avatar">J</div> John Doe</div></td>
+                        <td>Staff</td>
+                        <td>08:00 AM</td>
+                        <td>05:00 PM</td>
+                        <td><span className="status present">Present</span></td>
+                    </tr>
                 </tbody>
             </table>
             
             <div style={{ marginTop: '15px', display: 'flex', justifyContent: 'space-between', fontSize: '13px', color: '#666', alignItems: 'center' }}>
-                <span>Showing {filteredRows.length} of {getAttendanceRows().length} entries</span>
+                <span>Showing 5 of 124 entries</span>
                 <div style={{ display: 'flex', gap: '5px' }}>
                     <button className="btn" style={{ background: '#eee' }}>Previous</button>
                     <button className="btn btn-primary">1</button>
@@ -661,172 +560,66 @@ const Dashboard = () => {
             </div>
         </div>
       </div>
-
-      {registeringUserId && (
-        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 999 }}>
-          <div style={{ background: 'white', padding: '30px', borderRadius: '12px', width: '350px', boxShadow: '0 4px 20px rgba(0,0,0,0.2)' }}>
-            <h3 style={{ marginTop: 0, marginBottom: '15px' }}>👤 Register User</h3>
-            <p style={{ fontSize: '13px', color: '#666', marginBottom: '15px' }}>
-              Associate a name and role to User ID: <strong>{registeringUserId}</strong>
-            </p>
-            <form onSubmit={handleRegisterUser}>
-              <input
-                type="text" value={registeringUserName} onChange={e => setRegisteringUserName(e.target.value)}
-                placeholder="Full Name (e.g. John Doe)"
-                style={{ width: '100%', padding: '12px', borderRadius: '6px', border: '1px solid #ddd', fontSize: '14px', marginBottom: '15px', boxSizing: 'border-box' }}
-                required autoFocus
-              />
-              <select
-                value={registeringUserRole} onChange={e => setRegisteringUserRole(e.target.value)}
-                style={{ width: '100%', padding: '12px', borderRadius: '6px', border: '1px solid #ddd', fontSize: '14px', marginBottom: '20px', boxSizing: 'border-box' }}
-              >
-                <option value="student">Student</option>
-                <option value="teacher">Teacher</option>
-                <option value="staff">Staff</option>
-                <option value="admin">Admin</option>
-              </select>
-              <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
-                <button type="button" className="btn" style={{ background: '#eee', color: '#333' }} onClick={() => setRegisteringUserId(null)}>Cancel</button>
-                <button type="submit" className="btn btn-primary">Save User</button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
     </div>
   );
 };
 
 const AttendancePage = () => {
-  const [users, setUsers] = useState([]);
-  const [punches, setPunches] = useState([]);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    Promise.all([
-      api.get('/users'),
-      api.get('/punches')
-    ]).then(([usersRes, punchesRes]) => {
-      setUsers(usersRes.data);
-      setPunches(punchesRes.data);
-      setLoading(false);
-    }).catch(err => {
-      console.error(err);
-      setLoading(false);
-    });
-  }, []);
-
-  const getInitials = (name) => name ? name.split(' ').map(w => w[0]).join('').toUpperCase().slice(0,2) : '??';
-
-  const getFullLog = () => {
-    const grouped = {};
-    punches.forEach(p => {
-      const pDate = new Date(p.timestamp);
-      const dateStr = pDate.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
-      const key = `${dateStr}_${p.userId}`;
-      if (!grouped[key]) grouped[key] = [];
-      grouped[key].push(pDate);
-    });
-
-    const rows = [];
-    Object.keys(grouped).forEach(key => {
-      const [dateStr, userId] = key.split('_');
-      const user = users.find(u => String(u.id) === String(userId) || String(u.fingerprint_id) === String(userId)) || { name: `User ${userId}`, role: 'student', id: userId };
-      
-      const userPunches = grouped[key].sort((a, b) => a - b);
-      const firstPunch = userPunches[0];
-      const inTime = firstPunch.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
-      let outTime = '--:-- --';
-      if (userPunches.length > 1) {
-        const lastPunch = userPunches[userPunches.length - 1];
-        outTime = lastPunch.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
-      }
-
-      let status = 'Present';
-      const lateCutoff = new Date(firstPunch);
-      lateCutoff.setHours(9, 0, 0, 0);
-      if (firstPunch > lateCutoff) {
-        const diffMin = Math.round((firstPunch - lateCutoff) / 60000);
-        status = `Late (${diffMin} min)`;
-      }
-
-      rows.push({
-        date: dateStr,
-        user,
-        inTime,
-        outTime,
-        status,
-        timestamp: firstPunch.getTime()
-      });
-    });
-
-    return rows.sort((a, b) => b.timestamp - a.timestamp);
-  };
-
-  const logs = getFullLog();
-
   return (
     <div className="dashboard-card">
       <div className="card-header">
           <h2>📋 Full Attendance Log</h2>
           <div className="actions">
-              <button className="btn btn-primary" onClick={() => {
-                setLoading(true);
-                Promise.all([api.get('/users'), api.get('/punches')]).then(([ur, pr]) => {
-                  setUsers(ur.data);
-                  setPunches(pr.data);
-                  setLoading(false);
-                });
-              }}>🔄 Sync DB</button>
+              <button className="btn btn-primary">🔄 Sync DB</button>
               <button className="btn btn-success">📥 Export PDF</button>
           </div>
       </div>
-      {loading ? (
-        <div style={{ padding: '20px', textAlign: 'center', color: '#666' }}>Loading logs...</div>
-      ) : (
-        <table className="dashboard-table">
-            <thead>
-                <tr>
-                    <th>Date</th>
-                    <th>User</th>
-                    <th>Role</th>
-                    <th>In Time</th>
-                    <th>Out Time</th>
-                    <th>Status</th>
-                </tr>
-            </thead>
-            <tbody>
-                {logs.map((log, idx) => (
-                  <tr key={idx}>
-                      <td>{log.date}</td>
-                      <td>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                          <div className="avatar" style={{ background: log.user.role === 'teacher' ? '#3498db' : log.user.role === 'student' ? '#2ecc71' : '#e74c3c' }}>
-                            {getInitials(log.user.name)}
-                          </div>
-                          {log.user.name}
-                        </div>
-                      </td>
-                      <td style={{ textTransform: 'capitalize' }}>{log.user.role}</td>
-                      <td>{log.inTime}</td>
-                      <td>{log.outTime}</td>
-                      <td>
-                        <span className={`status ${log.status === 'Present' ? 'present' : log.status.startsWith('Late') ? 'late' : 'absent'}`}>
-                          {log.status}
-                        </span>
-                      </td>
-                  </tr>
-                ))}
-                {logs.length === 0 && (
-                  <tr>
-                    <td colSpan="6" style={{ textAlign: 'center', padding: '20px', color: '#888' }}>
-                      No attendance records found.
-                    </td>
-                  </tr>
-                )}
-            </tbody>
-        </table>
-      )}
+      <table className="dashboard-table">
+          <thead>
+              <tr>
+                  <th>Date</th>
+                  <th>User</th>
+                  <th>Role</th>
+                  <th>In Time</th>
+                  <th>Out Time</th>
+                  <th>Status</th>
+              </tr>
+          </thead>
+          <tbody>
+              <tr>
+                  <td>20 June 2026</td>
+                  <td><div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}><div className="avatar">A</div> Ahmed Khan</div></td>
+                  <td>Teacher</td>
+                  <td>08:15 AM</td>
+                  <td>--:-- --</td>
+                  <td><span className="status present">Present</span></td>
+              </tr>
+              <tr>
+                  <td>20 June 2026</td>
+                  <td><div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}><div className="avatar">S</div> Sarah Ali</div></td>
+                  <td>Student</td>
+                  <td>08:45 AM</td>
+                  <td>02:30 PM</td>
+                  <td><span className="status present">Present</span></td>
+              </tr>
+              <tr>
+                  <td>19 June 2026</td>
+                  <td><div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}><div className="avatar">R</div> Rahul Sharma</div></td>
+                  <td>Student</td>
+                  <td>09:20 AM</td>
+                  <td>03:10 PM</td>
+                  <td><span className="status late">Late</span></td>
+              </tr>
+              <tr>
+                  <td>19 June 2026</td>
+                  <td><div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}><div className="avatar" style={{ background: '#e74c3c' }}>M</div> Mrs. Patel</div></td>
+                  <td>Teacher</td>
+                  <td>--:-- --</td>
+                  <td>--:-- --</td>
+                  <td><span className="status absent">Absent</span></td>
+              </tr>
+          </tbody>
+      </table>
     </div>
   );
 };
@@ -894,73 +687,6 @@ const AdmissionsPage = () => {
 };
 
 const TeachersPage = () => {
-  const [teachers, setTeachers] = useState([]);
-  const [punches, setPunches] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [selectedTeacher, setSelectedTeacher] = useState(null);
-
-  useEffect(() => {
-    Promise.all([
-      api.get('/users'),
-      api.get('/punches')
-    ]).then(([usersRes, punchesRes]) => {
-      const allUsers = usersRes.data;
-      const tList = allUsers.filter(u => u.role === 'teacher' || u.role === 'staff' || u.role === 'admin');
-      setTeachers(tList);
-      setPunches(punchesRes.data);
-      if (tList.length > 0) {
-        setSelectedTeacher(tList[0]);
-      }
-      setLoading(false);
-    }).catch(err => {
-      console.error(err);
-      setLoading(false);
-    });
-  }, []);
-
-  const getInitials = (name) => name ? name.split(' ').map(w => w[0]).join('').toUpperCase().slice(0,2) : '??';
-
-  const getTeacherStats = (teacher) => {
-    if (!teacher) return null;
-    const uid = String(teacher.id);
-    const fuid = String(teacher.fingerprint_id);
-    
-    // Count unique days punched in the current month
-    const currentMonth = new Date().getMonth();
-    const currentYear = new Date().getFullYear();
-    
-    const punchedDays = new Set();
-    punches.forEach(p => {
-      const pDate = new Date(p.timestamp);
-      if (pDate.getMonth() === currentMonth && pDate.getFullYear() === currentYear) {
-        if (String(p.userId) === uid || String(p.userId) === fuid) {
-          punchedDays.add(pDate.toDateString());
-        }
-      }
-    });
-
-    const attendedDays = punchedDays.size;
-    const totalWorkingDays = 22;
-    const baseSalary = teacher.id === 3 ? 45000 : 48000;
-    
-    const netPayable = attendedDays >= totalWorkingDays 
-      ? baseSalary 
-      : Math.round(baseSalary * (attendedDays / totalWorkingDays));
-    
-    const deduction = baseSalary - netPayable;
-
-    return {
-      attendedDays,
-      totalWorkingDays,
-      baseSalary,
-      netPayable,
-      deduction,
-      absences: totalWorkingDays - attendedDays
-    };
-  };
-
-  const selectedStats = selectedTeacher ? getTeacherStats(selectedTeacher) : null;
-
   return (
     <div className="dashboard-card">
       <div className="card-header">
@@ -970,71 +696,45 @@ const TeachersPage = () => {
               <button className="btn btn-warning">Run Payroll</button>
           </div>
       </div>
-      {loading ? (
-        <div style={{ padding: '20px', textAlign: 'center', color: '#666' }}>Loading payroll data...</div>
-      ) : (
-        <>
-          <table className="dashboard-table">
-              <thead>
-                  <tr>
-                      <th>Teacher Name</th>
-                      <th>Department</th>
-                      <th>Base Salary</th>
-                      <th>Monthly Attendance</th>
-                      <th>Actions</th>
-                  </tr>
-              </thead>
-              <tbody>
-                  {teachers.map((teacher, idx) => {
-                    const stats = getTeacherStats(teacher);
-                    return (
-                      <tr key={teacher.id || idx}>
-                          <td>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                              <div className="avatar" style={{ background: '#3498db' }}>{getInitials(teacher.name)}</div>
-                              {teacher.name}
-                            </div>
-                          </td>
-                          <td style={{ textTransform: 'capitalize' }}>{teacher.role === 'teacher' ? 'Academics' : 'Administration'}</td>
-                          <td>₹ {stats.baseSalary.toLocaleString()}</td>
-                          <td>
-                            <span style={{ color: stats.attendedDays > 0 ? '#27ae60' : '#e74c3c', fontWeight: 'bold' }}>
-                              {stats.attendedDays}/{stats.totalWorkingDays} Days
-                            </span>
-                          </td>
-                          <td>
-                            <button
-                              className="btn btn-warning"
-                              style={{ padding: '4px 10px' }}
-                              onClick={() => setSelectedTeacher(teacher)}
-                            >💰 Calculate Cut</button>
-                          </td>
-                      </tr>
-                    );
-                  })}
-                  {teachers.length === 0 && (
-                    <tr>
-                      <td colSpan="5" style={{ textAlign: 'center', padding: '20px', color: '#888' }}>
-                        No teachers found. Register users as teachers to display them here.
-                      </td>
-                    </tr>
-                  )}
-              </tbody>
-          </table>
-          
-          {selectedStats && (
-            <div style={{ marginTop: '20px', padding: '15px', background: '#f8f9fa', borderRadius: '8px', borderLeft: '5px solid #27ae60' }}>
-                <h4 style={{ margin: '0 0 5px 0' }}>Preview Calculation: {selectedTeacher.name}</h4>
-                <p style={{ margin: '0', fontSize: '14px', color: '#666' }}>
-                  Base: ₹{selectedStats.baseSalary.toLocaleString()} | 
-                  Absences: {selectedStats.absences} Days | 
-                  Deduction: ₹{selectedStats.deduction.toLocaleString()} | 
-                  <strong> Net Payable: ₹{selectedStats.netPayable.toLocaleString()}</strong>
-                </p>
-            </div>
-          )}
-        </>
-      )}
+      <table className="dashboard-table">
+          <thead>
+              <tr>
+                  <th>Teacher Name</th>
+                  <th>Department</th>
+                  <th>Base Salary</th>
+                  <th>Monthly Attendance</th>
+                  <th>Actions</th>
+              </tr>
+          </thead>
+          <tbody>
+              <tr>
+                  <td><div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}><div className="avatar">A</div> Ahmed Khan</div></td>
+                  <td>Mathematics</td>
+                  <td>₹ 45,000</td>
+                  <td><span style={{ color: '#27ae60', fontWeight: 'bold' }}>20/22 Days</span></td>
+                  <td><button className="btn btn-warning" style={{ padding: '4px 10px' }}>💰 Calculate Cut</button></td>
+              </tr>
+              <tr>
+                  <td><div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}><div className="avatar" style={{ background: '#e74c3c' }}>M</div> Mrs. Patel</div></td>
+                  <td>Science</td>
+                  <td>₹ 48,000</td>
+                  <td><span style={{ color: '#e74c3c', fontWeight: 'bold' }}>15/22 Days</span></td>
+                  <td><button className="btn btn-warning" style={{ padding: '4px 10px' }}>💰 Calculate Cut</button></td>
+              </tr>
+              <tr>
+                  <td><div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}><div className="avatar">D</div> Dr. Khan</div></td>
+                  <td>Physics</td>
+                  <td>₹ 55,000</td>
+                  <td><span style={{ color: '#27ae60', fontWeight: 'bold' }}>22/22 Days</span></td>
+                  <td><button className="btn btn-warning" style={{ padding: '4px 10px' }}>💰 Calculate Cut</button></td>
+              </tr>
+          </tbody>
+      </table>
+      
+      <div style={{ marginTop: '20px', padding: '15px', background: '#f8f9fa', borderRadius: '8px', borderLeft: '5px solid #27ae60' }}>
+          <h4 style={{ margin: '0 0 5px 0' }}>Preview Calculation: Mrs. Patel</h4>
+          <p style={{ margin: '0', fontSize: '14px', color: '#666' }}>Base: ₹48,000 | Absences: 7 Days | Deduction: ₹15,272 | <strong>Net Payable: ₹32,728</strong></p>
+      </div>
     </div>
   );
 };
@@ -1152,48 +852,7 @@ const DevicesPage = () => {
   const [liveScans, setLiveScans] = useState([]);
   const [userMap, setUserMap] = useState({});
   const [toast, setToast] = useState(null);
-  const [serverIp, setServerIp] = useState('127.0.0.1');
-  const [registeringUserId, setRegisteringUserId] = useState(null);
-  const [registeringUserName, setRegisteringUserName] = useState('');
-  const [registeringUserRole, setRegisteringUserRole] = useState('student');
-  const [syncStatus, setSyncStatus] = useState({});
   const toastTimerRef = React.useRef(null);
-
-  const handleSyncUsers = (serialNumber) => {
-    setSyncStatus(prev => ({ ...prev, [serialNumber]: 'Syncing...' }));
-    api.post('/devices/sync-users', { serialNumber })
-      .then(res => {
-        setSyncStatus(prev => ({ ...prev, [serialNumber]: 'Command Queued!' }));
-        setTimeout(() => {
-          setSyncStatus(prev => ({ ...prev, [serialNumber]: null }));
-        }, 5000);
-      })
-      .catch(err => {
-        setSyncStatus(prev => ({ ...prev, [serialNumber]: 'Failed' }));
-        setTimeout(() => {
-          setSyncStatus(prev => ({ ...prev, [serialNumber]: null }));
-        }, 5000);
-        console.error(err);
-      });
-  };
-
-  const handleRegisterUser = (e) => {
-    e.preventDefault();
-    if (!registeringUserName.trim() || !registeringUserId) return;
-    api.post('/users', {
-      id: registeringUserId,
-      name: registeringUserName,
-      role: registeringUserRole || 'student',
-      fingerprint_id: String(registeringUserId)
-    })
-    .then(() => {
-      // Refresh userMap
-      api.get('/users/map').then(res => setUserMap(res.data)).catch(() => {});
-      setRegisteringUserId(null);
-      setRegisteringUserName('');
-    })
-    .catch(err => console.error(err));
-  };
 
   const fetchDevices = () => {
     setLoading(true);
@@ -1204,9 +863,6 @@ const DevicesPage = () => {
 
   useEffect(() => {
     fetchDevices();
-
-    // Fetch server LAN IP info
-    api.get('/info').then(res => setServerIp(res.data.ip)).catch(() => {});
 
     // Load user ID → name map
     api.get('/users/map').then(res => setUserMap(res.data)).catch(() => {});
@@ -1365,17 +1021,9 @@ const DevicesPage = () => {
                   <td>
                     <button
                       className="btn btn-warning"
-                      style={{ padding: '4px 10px', fontSize: '13px', marginRight: '8px' }}
+                      style={{ padding: '4px 10px', fontSize: '13px' }}
                       onClick={() => { setEditingDevice(device); setNewName(device.name); }}
                     >✏️ Rename</button>
-                    <button
-                      className="btn btn-primary"
-                      style={{ padding: '4px 10px', fontSize: '13px', background: '#3498db', border: 'none' }}
-                      disabled={syncStatus[device.serialNumber]}
-                      onClick={() => handleSyncUsers(device.serialNumber)}
-                    >
-                      {syncStatus[device.serialNumber] || '📥 Sync Names'}
-                    </button>
                   </td>
                 </tr>
               ))}
@@ -1415,12 +1063,12 @@ const DevicesPage = () => {
             </div>
             <div style={{ fontSize: '14px', color: '#888' }}>
               Ask someone to scan their fingerprint on the <strong>Bio System (x 2006)</strong> device.<br />
-              Make sure the device ADMS server IP is configured to: <strong>{serverIp}:8080</strong>
+              Their scan will appear here instantly in real time.
             </div>
             <div style={{ marginTop: '20px', display: 'flex', justifyContent: 'center', gap: '8px', alignItems: 'center' }}>
               <span className="pulse-green"></span>
               <span style={{ fontSize: '13px', color: '#27ae60', fontWeight: '600' }}>
-                Socket connected • Listening on {serverIp}:8080
+                Socket connected • Listening on port 8080
               </span>
             </div>
           </div>
@@ -1468,23 +1116,6 @@ const DevicesPage = () => {
                       <div style={{ fontSize: '12px', color: '#888', marginTop: '2px' }}>
                         🕐 {scan.receivedAt}
                       </div>
-                      {resolvedName(scan).startsWith('User ') && (
-                        <button
-                          onClick={() => {
-                            setRegisteringUserId(scan.userId);
-                            setRegisteringUserName('');
-                            setRegisteringUserRole('student');
-                          }}
-                          style={{
-                            background: 'none', border: 'none', color: '#667eea',
-                            fontSize: '11px', fontWeight: 600, cursor: 'pointer',
-                            padding: '0', textDecoration: 'underline', marginTop: '4px',
-                            display: 'block'
-                          }}
-                        >
-                          ✏️ Associate Name
-                        </button>
-                      )}
                     </div>
                   </div>
                 </div>
@@ -1512,38 +1143,6 @@ const DevicesPage = () => {
               <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
                 <button type="button" className="btn" style={{ background: '#eee', color: '#333' }} onClick={() => setEditingDevice(null)}>Cancel</button>
                 <button type="submit" className="btn btn-primary">Save Changes</button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {registeringUserId && (
-        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 999 }}>
-          <div style={{ background: 'white', padding: '30px', borderRadius: '12px', width: '350px', boxShadow: '0 4px 20px rgba(0,0,0,0.2)' }}>
-            <h3 style={{ marginTop: 0, marginBottom: '15px' }}>👤 Register User</h3>
-            <p style={{ fontSize: '13px', color: '#666', marginBottom: '15px' }}>
-              Associate a name and role to User ID: <strong>{registeringUserId}</strong>
-            </p>
-            <form onSubmit={handleRegisterUser}>
-              <input
-                type="text" value={registeringUserName} onChange={e => setRegisteringUserName(e.target.value)}
-                placeholder="Full Name (e.g. John Doe)"
-                style={{ width: '100%', padding: '12px', borderRadius: '6px', border: '1px solid #ddd', fontSize: '14px', marginBottom: '15px', boxSizing: 'border-box' }}
-                required autoFocus
-              />
-              <select
-                value={registeringUserRole} onChange={e => setRegisteringUserRole(e.target.value)}
-                style={{ width: '100%', padding: '12px', borderRadius: '6px', border: '1px solid #ddd', fontSize: '14px', marginBottom: '20px', boxSizing: 'border-box' }}
-              >
-                <option value="student">Student</option>
-                <option value="teacher">Teacher</option>
-                <option value="staff">Staff</option>
-                <option value="admin">Admin</option>
-              </select>
-              <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
-                <button type="button" className="btn" style={{ background: '#eee', color: '#333' }} onClick={() => setRegisteringUserId(null)}>Cancel</button>
-                <button type="submit" className="btn btn-primary">Save User</button>
               </div>
             </form>
           </div>
