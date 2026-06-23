@@ -3,7 +3,12 @@ import { BrowserRouter as Router, Routes, Route, Link, Navigate, useLocation } f
 import { io } from 'socket.io-client';
 import api from './api';
 
+<<<<<<< Updated upstream
 const socket = io('http://localhost:8080');
+=======
+const backendHost = '192.168.0.104';
+const socket = io(`http://${backendHost}:8080`);
+>>>>>>> Stashed changes
 const AuthContext = React.createContext(null);
 
 // --- LOGIN PAGE ---
@@ -229,9 +234,41 @@ const Dashboard = () => {
       toastRef.current = setTimeout(() => setLastScanToast(null), 5000);
     };
 
+    const handlePunchPhoto = (data) => {
+      setLivePunches(prev => prev.map(p => {
+        if (String(p.userId) === String(data.userId)) {
+          return { ...p, userPhoto: data.userPhoto };
+        }
+        return p;
+      }));
+
+      setLastScanToast(prev => {
+        if (prev && String(prev.userId) === String(data.userId)) {
+          return { ...prev, userPhoto: data.userPhoto };
+        }
+        return prev;
+      });
+
+      setPunches(prev => prev.map(p => {
+        if (String(p.userId) === String(data.userId)) {
+          return { ...p, userPhoto: data.userPhoto };
+        }
+        return p;
+      }));
+
+      setUsers(prev => prev.map(u => {
+        if (String(u.id) === String(data.userId) || String(u.fingerprint_id) === String(data.userId)) {
+          return { ...u, photo: data.userPhoto };
+        }
+        return u;
+      }));
+    };
+
     socket.on('live_punch', handlePunch);
+    socket.on('live_punch_photo', handlePunchPhoto);
     return () => {
       socket.off('live_punch', handlePunch);
+      socket.off('live_punch_photo', handlePunchPhoto);
       if (toastRef.current) clearTimeout(toastRef.current);
     };
   }, []);
@@ -239,7 +276,28 @@ const Dashboard = () => {
   if (!stats) return <div>Loading dashboard...</div>;
 
   const getInitials = (name) => name ? name.split(' ').map(w => w[0]).join('').toUpperCase().slice(0,2) : '??';
-  const resolvedName = (punch) => punch.userName || userMap[String(punch.userId)] || `User ${punch.userId}`;
+  
+  const resolvedName = (punch) => {
+    const user = users.find(u => String(u.id) === String(punch.userId) || String(u.fingerprint_id) === String(punch.userId));
+    return user ? user.name : (punch.userName || `User ${punch.userId}`);
+  };
+
+  const resolvedPhoto = (punch) => {
+    let photo = null;
+    if (punch.userPhoto) {
+      photo = punch.userPhoto;
+    } else {
+      const user = users.find(u => String(u.id) === String(punch.userId) || String(u.fingerprint_id) === String(punch.userId));
+      photo = user ? user.photo : null;
+    }
+    if (photo) {
+      if (photo.startsWith('http')) return photo;
+      return `http://${backendHost}:8080${photo}`;
+    }
+    return null;
+  };
+
+  const isFaceScan = (punch) => String(punch.verifyMode) === '15';
 
   return (
     <div>
@@ -257,17 +315,31 @@ const Dashboard = () => {
           <div style={{
             width: '46px', height: '46px', borderRadius: '50%',
             background: 'linear-gradient(135deg, #667eea, #764ba2)',
+<<<<<<< Updated upstream
             display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '22px', flexShrink: 0, overflow: 'hidden'
           }}>
             {lastScanToast.photoUrl ? (
               <img src={lastScanToast.photoUrl} alt="User Face" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
             ) : (
               lastScanToast.verifyMode === '15' ? '🧑' : '👆'
+=======
+            display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '22px', flexShrink: 0,
+            overflow: 'hidden'
+          }}>
+            {resolvedPhoto(lastScanToast) ? (
+              <img src={resolvedPhoto(lastScanToast)} alt="Face" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+            ) : (
+              isFaceScan(lastScanToast) ? '👤' : '👆'
+>>>>>>> Stashed changes
             )}
           </div>
           <div style={{ flex: 1 }}>
             <div style={{ fontSize: '10px', color: '#a0a8d0', fontWeight: 700, letterSpacing: '1.5px', textTransform: 'uppercase', marginBottom: '3px' }}>
+<<<<<<< Updated upstream
               🔴 LIVE {lastScanToast.verifyMode === '15' ? 'FACE' : 'FINGERPRINT'} SCAN
+=======
+              🔴 {isFaceScan(lastScanToast) ? 'LIVE FACE SCAN' : 'LIVE FINGERPRINT SCAN'}
+>>>>>>> Stashed changes
             </div>
             <div style={{ fontSize: '17px', fontWeight: 800 }}>{resolvedName(lastScanToast)}</div>
             <div style={{ fontSize: '12px', color: '#8892b0', marginTop: '2px' }}>
@@ -365,8 +437,14 @@ const Dashboard = () => {
                     width: '40px', height: '40px', borderRadius: '50%', flexShrink: 0,
                     background: idx === 0 ? 'linear-gradient(135deg, #667eea, #764ba2)' : '#bdc3c7',
                     display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    color: 'white', fontWeight: 800, fontSize: '14px'
-                  }}>{getInitials(resolvedName(punch))}</div>
+                    color: 'white', fontWeight: 800, fontSize: '14px', overflow: 'hidden'
+                  }}>
+                    {resolvedPhoto(punch) ? (
+                      <img src={resolvedPhoto(punch)} alt="Face" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                    ) : (
+                      isFaceScan(punch) ? '👤' : '👆'
+                    )}
+                  </div>
                   <div>
                     <div style={{ fontWeight: 700, fontSize: '14px', marginBottom: '2px' }}>{resolvedName(punch)}</div>
                     <div style={{ fontSize: '11px', color: '#666' }}>ID: {punch.userId}</div>
@@ -940,6 +1018,7 @@ const Simulator = () => {
   const [users, setUsers] = useState([]);
   const [selected, setSelected] = useState(null);
   const [direction, setDirection] = useState('in');
+  const [verifyMode, setVerifyMode] = useState('1'); // 1 = Fingerprint, 15 = Face
   const [time, setTime] = useState(new Date().toLocaleTimeString('en-GB', { hour12: false }));
   const [result, setResult] = useState(null);
   useEffect(() => { api.get('/users').then(res => { setUsers(res.data); if (res.data.length) setSelected(res.data[0]); }); }, []);
@@ -947,8 +1026,13 @@ const Simulator = () => {
     if (!selected) return;
     const now = new Date(); const [h, m, s] = time.split(':').map(Number); now.setHours(h, m, s || 0);
     try {
-      const res = await api.post('/biometric/webhook', { fingerprint_id: selected.fingerprint_id, timestamp: now.toISOString(), direction });
-      setResult({ success: true, msg: `✅ ${selected.name} marked ${direction === 'in' ? 'IN' : 'OUT'} at ${time}`, data: res.data });
+      const res = await api.post('/biometric/webhook', { 
+        fingerprint_id: selected.fingerprint_id, 
+        timestamp: now.toISOString(), 
+        direction,
+        verifyMode
+      });
+      setResult({ success: true, msg: `✅ ${selected.name} marked ${direction === 'in' ? 'IN' : 'OUT'} via ${verifyMode === '15' ? 'Face Scan' : 'Fingerprint'} at ${time}`, data: res.data });
     } catch (err) { setResult({ success: false, msg: `❌ Error: ${err.response?.data?.error || err.message}` }); }
   };
   return (
@@ -957,6 +1041,11 @@ const Simulator = () => {
       <select style={{ width: '100%', padding: '10px', marginBottom: '15px', borderRadius: '6px', border: '1px solid #ddd' }} onChange={(e) => setSelected(users.find(u => u.id === parseInt(e.target.value)))}>
         {users.map(u => <option key={u.id} value={u.id}>{u.name} ({u.role})</option>)}
       </select>
+      <div style={{ marginBottom: '15px' }}>
+        <label style={{ marginRight: '10px', fontWeight: 'bold' }}>Verify Mode: </label>
+        <label style={{ marginRight: '15px' }}><input type="radio" value="1" checked={verifyMode === '1'} onChange={() => setVerifyMode('1')} /> 👆 Fingerprint</label>
+        <label><input type="radio" value="15" checked={verifyMode === '15'} onChange={() => setVerifyMode('15')} /> 👤 Face Scan</label>
+      </div>
       <div style={{ marginBottom: '15px' }}><label>Direction: </label><input type="radio" value="in" checked={direction === 'in'} onChange={() => setDirection('in')} /> IN <input type="radio" value="out" checked={direction === 'out'} onChange={() => setDirection('out')} /> OUT</div>
       <input type="time" step="1" value={time} onChange={(e) => setTime(e.target.value)} style={{ width: '100%', padding: '10px', marginBottom: '15px', borderRadius: '6px', border: '1px solid #ddd' }} />
       <button onClick={simulate} style={{ width: '100%', padding: '12px', borderRadius: '6px', border: 'none', background: '#667eea', color: 'white', fontSize: '16px', cursor: 'pointer' }}>🖐️ Simulate Scan</button>
@@ -1048,9 +1137,89 @@ const DevicesPage = () => {
   const [newName, setNewName] = useState('');
   const [liveScans, setLiveScans] = useState([]);
   const [userMap, setUserMap] = useState({});
+  const [users, setUsers] = useState([]);
   const [toast, setToast] = useState(null);
   const toastTimerRef = React.useRef(null);
 
+<<<<<<< Updated upstream
+=======
+  const resolvedName = (scan) => {
+    const user = users.find(u => String(u.id) === String(scan.userId) || String(u.fingerprint_id) === String(scan.userId));
+    return user ? user.name : (scan.userName || `User ${scan.userId}`);
+  };
+
+  const resolvedPhoto = (scan) => {
+    let photo = null;
+    if (scan.userPhoto) {
+      photo = scan.userPhoto;
+    } else {
+      const user = users.find(u => String(u.id) === String(scan.userId) || String(u.fingerprint_id) === String(scan.userId));
+      photo = user ? user.photo : null;
+    }
+    if (photo) {
+      if (photo.startsWith('http')) return photo;
+      return `http://${backendHost}:8080${photo}`;
+    }
+    return null;
+  };
+
+  const isFaceScan = (scan) => String(scan.verifyMode) === '15';
+
+  const handleSyncUsers = (serialNumber) => {
+    setSyncStatus(prev => ({ ...prev, [serialNumber]: 'Syncing...' }));
+    api.post('/devices/sync-users', { serialNumber })
+      .then(res => {
+        setSyncStatus(prev => ({ ...prev, [serialNumber]: 'Command Queued!' }));
+        setTimeout(() => {
+          setSyncStatus(prev => ({ ...prev, [serialNumber]: null }));
+        }, 5000);
+      })
+      .catch(err => {
+        setSyncStatus(prev => ({ ...prev, [serialNumber]: 'Failed' }));
+        setTimeout(() => {
+          setSyncStatus(prev => ({ ...prev, [serialNumber]: null }));
+        }, 5000);
+        console.error(err);
+      });
+  };
+
+  const handleSyncPhotos = (serialNumber) => {
+    setSyncStatus(prev => ({ ...prev, [serialNumber + '_photo']: 'Syncing...' }));
+    api.post('/devices/sync-photos', { serialNumber })
+      .then(res => {
+        setSyncStatus(prev => ({ ...prev, [serialNumber + '_photo']: 'Command Queued!' }));
+        setTimeout(() => {
+          setSyncStatus(prev => ({ ...prev, [serialNumber + '_photo']: null }));
+        }, 5000);
+      })
+      .catch(err => {
+        setSyncStatus(prev => ({ ...prev, [serialNumber + '_photo']: 'Failed' }));
+        setTimeout(() => {
+          setSyncStatus(prev => ({ ...prev, [serialNumber + '_photo']: null }));
+        }, 5000);
+        console.error(err);
+      });
+  };
+
+  const handleRegisterUser = (e) => {
+    e.preventDefault();
+    if (!registeringUserName.trim() || !registeringUserId) return;
+    api.post('/users', {
+      id: registeringUserId,
+      name: registeringUserName,
+      role: registeringUserRole || 'student',
+      fingerprint_id: String(registeringUserId)
+    })
+    .then(() => {
+      // Refresh userMap
+      api.get('/users/map').then(res => setUserMap(res.data)).catch(() => {});
+      setRegisteringUserId(null);
+      setRegisteringUserName('');
+    })
+    .catch(err => console.error(err));
+  };
+
+>>>>>>> Stashed changes
   const fetchDevices = () => {
     setLoading(true);
     api.get('/devices')
@@ -1061,6 +1230,15 @@ const DevicesPage = () => {
   useEffect(() => {
     fetchDevices();
 
+<<<<<<< Updated upstream
+=======
+    // Fetch server LAN IP info
+    api.get('/info').then(res => setServerIp(res.data.ip)).catch(() => {});
+
+    // Load users list
+    api.get('/users').then(res => setUsers(res.data)).catch(() => {});
+
+>>>>>>> Stashed changes
     // Load user ID → name map
     api.get('/users/map').then(res => setUserMap(res.data)).catch(() => {});
 
@@ -1084,9 +1262,34 @@ const DevicesPage = () => {
       fetchDevices();
     };
 
+    const handleLivePunchPhoto = (data) => {
+      setLiveScans(prev => prev.map(s => {
+        if (String(s.userId) === String(data.userId)) {
+          return { ...s, userPhoto: data.userPhoto };
+        }
+        return s;
+      }));
+
+      setToast(prev => {
+        if (prev && String(prev.userId) === String(data.userId)) {
+          return { ...prev, userPhoto: data.userPhoto };
+        }
+        return prev;
+      });
+
+      setUsers(prev => prev.map(u => {
+        if (String(u.id) === String(data.userId) || String(u.fingerprint_id) === String(data.userId)) {
+          return { ...u, photo: data.userPhoto };
+        }
+        return u;
+      }));
+    };
+
     socket.on('live_punch', handleLivePunch);
+    socket.on('live_punch_photo', handleLivePunchPhoto);
     return () => {
       socket.off('live_punch', handleLivePunch);
+      socket.off('live_punch_photo', handleLivePunchPhoto);
       if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
     };
   }, []);
@@ -1106,7 +1309,6 @@ const DevicesPage = () => {
   };
 
   const getInitials = (name) => name ? name.split(' ').map(w => w[0]).join('').toUpperCase().slice(0,2) : '??';
-  const resolvedName = (scan) => scan.userName || userMap[String(scan.userId)] || `User ${scan.userId}`;
 
   const toastStyle = {
     position: 'fixed', top: '24px', right: '24px', zIndex: 9999,
@@ -1127,17 +1329,31 @@ const DevicesPage = () => {
             width: '48px', height: '48px', borderRadius: '50%',
             background: 'linear-gradient(135deg, #667eea, #764ba2)',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
+<<<<<<< Updated upstream
             color: 'white', fontWeight: '800', fontSize: '16px', flexShrink: 0, overflow: 'hidden'
           }}>
             {toast.photoUrl ? (
               <img src={toast.photoUrl} alt="Face" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
             ) : (
               getInitials(resolvedName(toast))
+=======
+            color: 'white', fontWeight: '800', fontSize: '16px', flexShrink: 0,
+            overflow: 'hidden'
+          }}>
+            {resolvedPhoto(toast) ? (
+              <img src={resolvedPhoto(toast)} alt="Face" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+            ) : (
+              isFaceScan(toast) ? '👤' : '👆'
+>>>>>>> Stashed changes
             )}
           </div>
           <div style={{ flex: 1 }}>
             <div style={{ fontSize: '11px', color: '#a0a8c0', fontWeight: '600', letterSpacing: '1px', textTransform: 'uppercase', marginBottom: '4px' }}>
+<<<<<<< Updated upstream
               🔴 LIVE {toast.verifyMode === '15' ? 'FACE' : 'FINGERPRINT'} SCAN
+=======
+              🔴 {isFaceScan(toast) ? 'Live Face Scan Detected' : 'Live Fingerprint Scan Detected'}
+>>>>>>> Stashed changes
             </div>
             <div style={{ fontSize: '16px', fontWeight: '700', marginBottom: '2px' }}>
               {resolvedName(toast)}
@@ -1227,6 +1443,25 @@ const DevicesPage = () => {
                       style={{ padding: '4px 10px', fontSize: '13px' }}
                       onClick={() => { setEditingDevice(device); setNewName(device.name); }}
                     >✏️ Rename</button>
+<<<<<<< Updated upstream
+=======
+                    <button
+                      className="btn btn-primary"
+                      style={{ padding: '4px 10px', fontSize: '13px', background: '#3498db', border: 'none', marginRight: '8px' }}
+                      disabled={syncStatus[device.serialNumber]}
+                      onClick={() => handleSyncUsers(device.serialNumber)}
+                    >
+                      {syncStatus[device.serialNumber] || '📥 Sync Names'}
+                    </button>
+                    <button
+                      className="btn btn-success"
+                      style={{ padding: '4px 10px', fontSize: '13px', background: '#27ae60', border: 'none' }}
+                      disabled={syncStatus[device.serialNumber + '_photo']}
+                      onClick={() => handleSyncPhotos(device.serialNumber)}
+                    >
+                      {syncStatus[device.serialNumber + '_photo'] || '📸 Sync Photos'}
+                    </button>
+>>>>>>> Stashed changes
                   </td>
                 </tr>
               ))}
@@ -1307,8 +1542,15 @@ const DevicesPage = () => {
                         ? 'linear-gradient(135deg, #667eea, #764ba2)'
                         : 'linear-gradient(135deg, #bdc3c7, #95a5a6)',
                       display: 'flex', alignItems: 'center', justifyContent: 'center',
-                      color: 'white', fontWeight: '800', fontSize: '15px', flexShrink: 0
-                    }}>{getInitials(resolvedName(scan))}</div>
+                      color: 'white', fontWeight: '800', fontSize: '15px', flexShrink: 0,
+                      overflow: 'hidden'
+                    }}>
+                      {resolvedPhoto(scan) ? (
+                        <img src={resolvedPhoto(scan)} alt="Face" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                      ) : (
+                        isFaceScan(scan) ? '👤' : '👆'
+                      )}
+                    </div>
                     <div style={{ flex: 1 }}>
                       <div style={{ fontWeight: '700', fontSize: '15px', marginBottom: '2px' }}>
                         {resolvedName(scan)}
