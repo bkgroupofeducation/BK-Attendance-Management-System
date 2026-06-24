@@ -101,6 +101,19 @@
         .toggle-checkbox:checked + .toggle-label {
             background-color: #7c3aed;
         }
+
+        @media print {
+            body > *:not(#printable-receipt) {
+                display: none !important;
+            }
+            #printable-receipt {
+                display: block !important;
+                visibility: visible !important;
+            }
+            body {
+                background: white !important;
+            }
+        }
     </style>
 </head>
 <body class="min-h-screen pb-12">
@@ -195,6 +208,7 @@
                                 <option value="" disabled selected>Select Gender</option>
                                 <option value="Male">Male</option>
                                 <option value="Female">Female</option>
+                                <option value="Transgender">Transgender</option>
                                 <option value="Other">Other</option>
                             </select>
                             <label class="absolute left-3 -top-1 bg-white px-1 text-sm text-slate-500 transition-all pointer-events-none">Gender</label>
@@ -394,6 +408,51 @@
                                     </div>
                                 </div>
                             </div>
+
+                            <div class="col-span-full border-t border-slate-200 mt-4 pt-6"></div>
+
+                            <!-- Payment Details Section -->
+                            <div class="col-span-full">
+                                <h3 class="text-lg font-semibold text-slate-800 mb-4">Payment Details</h3>
+                                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                                    <!-- Amount Received -->
+                                    <div>
+                                        <label class="block text-sm font-medium text-slate-700 mb-2">Amount Received (₹)</label>
+                                        <input type="number" id="amount-received" value="0" class="w-full border border-slate-300 rounded-lg px-4 py-3 bg-white focus:outline-none focus:border-violet-500 focus:ring-1 focus:ring-violet-500 transition-colors" oninput="handlePaymentChange()">
+                                    </div>
+
+                                    <!-- Due Fees -->
+                                    <div>
+                                        <label class="block text-sm font-medium text-slate-700 mb-2">Due Fees (₹)</label>
+                                        <input type="text" id="due-fees" value="50,000" readonly class="w-full border border-slate-300 rounded-lg px-4 py-3 bg-slate-50 text-slate-700 font-bold focus:outline-none">
+                                    </div>
+
+                                    <!-- Payment Mode -->
+                                    <div>
+                                        <label class="block text-sm font-medium text-slate-700 mb-2">Payment Mode</label>
+                                        <select id="payment-mode" class="w-full border border-slate-300 rounded-lg px-4 py-3 bg-white focus:outline-none focus:border-violet-500 focus:ring-1 focus:ring-violet-500 transition-colors">
+                                            <option value="Cash">Cash</option>
+                                            <option value="Online">Online</option>
+                                            <option value="Net Banking">Net Banking</option>
+                                        </select>
+                                    </div>
+
+                                    <!-- Installment -->
+                                    <div>
+                                        <label class="block text-sm font-medium text-slate-700 mb-2">Installment (Yes/No)</label>
+                                        <select id="installment-opt" class="w-full border border-slate-300 rounded-lg px-4 py-3 bg-white focus:outline-none focus:border-violet-500 focus:ring-1 focus:ring-violet-500 transition-colors">
+                                            <option value="No">No</option>
+                                            <option value="Yes">Yes</option>
+                                        </select>
+                                    </div>
+
+                                    <!-- Amount Received In Words -->
+                                    <div class="col-span-full lg:col-span-2">
+                                        <label class="block text-sm font-medium text-slate-700 mb-2">Amount Received (In Words)</label>
+                                        <input type="text" id="amount-received-words" value="Zero" readonly class="w-full border border-slate-300 rounded-lg px-4 py-3 bg-slate-50 text-slate-700 focus:outline-none italic">
+                                    </div>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -445,9 +504,14 @@
                         <span class="font-bold text-violet-700 text-2xl" id="receipt-fee">₹0</span>
                     </div>
                 </div>
-                <button onclick="closeModal()" class="w-full mt-8 py-3.5 bg-slate-900 text-white rounded-xl font-medium hover:bg-slate-800 transition-colors shadow-md">
-                    Done
-                </button>
+                <div class="flex gap-4 mt-8">
+                    <button onclick="printReceipt()" class="w-full py-3.5 bg-violet-100 text-violet-700 rounded-xl font-medium hover:bg-violet-200 transition-colors shadow-sm">
+                        Print Receipt
+                    </button>
+                    <button onclick="closeModal()" class="w-full py-3.5 bg-slate-900 text-white rounded-xl font-medium hover:bg-slate-800 transition-colors shadow-md">
+                        Done
+                    </button>
+                </div>
             </div>
         </div>
     </div>
@@ -455,7 +519,172 @@
     <!-- Toast Container -->
     <div id="toast-container"></div>
 
+    <!-- Printable Receipt Section -->
+    <div id="printable-receipt" class="hidden p-4 text-black text-sm" style="font-family: 'Inter', sans-serif;">
+        <!-- Student Copy -->
+        <div class="mb-4 text-center font-semibold text-xs">Student's Copy</div>
+        <div class="border border-slate-300 p-4">
+            <!-- Header -->
+            <div class="flex justify-between items-start mb-4">
+                <div class="flex flex-1 pr-4">
+                    <div class="w-16 h-16 border border-slate-200 bg-slate-50 mr-4 flex items-center justify-center text-xs text-slate-400">
+                        <img src="/logo.png" alt="Logo" class="max-w-full max-h-full" onerror="this.style.display='none'">
+                    </div>
+                    <div>
+                        <div class="font-bold text-base">BK GROUP OF EDUCATION</div>
+                        <div class="text-xs text-slate-600 mt-1">2nd floor, Gajanan Plaza, Gharpure Ghat Road,<br>Ashok Stambh, Nashik-422001</div>
+                        <div class="text-xs text-slate-600 mt-1">Email : bkgroupofeducation1@gmail.com<br>Contact No. : 8888301363</div>
+                    </div>
+                </div>
+                <div class="w-[40%] border-l-2 border-slate-800 pl-4">
+                    <div class="font-bold text-base" id="print-student-name">Student Name</div>
+                    <div class="text-xs text-slate-600 mt-1">Address : <span id="print-address"></span></div>
+                    <div class="text-xs text-slate-600">Email : <span id="print-email"></span></div>
+                    <div class="text-xs text-slate-600">Contact No. : <span id="print-contact"></span></div>
+                </div>
+            </div>
+
+            <!-- Title -->
+            <div class="border-y-2 border-slate-800 py-1 text-center font-bold text-sm tracking-widest mb-2">
+                FEES RECEIPT
+            </div>
+
+            <!-- Meta -->
+            <div class="flex justify-between font-bold text-xs mb-2">
+                <div>Receipt Date : <span id="print-date"></span></div>
+                <div>Receipt No. : <span id="print-receipt-no">NA</span></div>
+            </div>
+
+            <!-- Grid -->
+            <div class="border-y border-slate-300 py-2 text-xs mb-2 space-y-2">
+                <div><span class="font-bold">Courses :</span> <span id="print-courses"></span></div>
+                <div><span class="font-bold">Amount received :</span> ₹ <span id="print-amount"></span></div>
+                <div><span class="font-bold">Amount received (in words) :</span> <span id="print-amount-words"></span></div>
+                
+                <div class="flex border-t border-slate-200 mt-2 pt-2">
+                    <div class="flex-1 space-y-2">
+                        <div><span class="font-bold">Payment mode :</span> <span id="print-payment-mode">Cash</span></div>
+                        <div><span class="font-bold">Total Fees :</span> ₹ <span id="print-total-fees">NA</span></div>
+                        <div><span class="font-bold">Installment (Yes/No) :</span> <span id="print-installment">NA</span></div>
+                        <div><span class="font-bold">Due Fees :</span> ₹ <span id="print-due-date"></span></div>
+                    </div>
+                    <div class="flex-1 space-y-2">
+                        <div><span class="font-bold">Cheque No. :</span> <span id="print-cheque-no">NA</span></div>
+                        <div><span class="font-bold">Bank Name :</span> <span id="print-bank-name">NA</span></div>
+                        <div><span class="font-bold">IFSC Code :</span> <span id="print-ifsc">NA</span></div>
+                        <div><span class="font-bold">Due Fees :</span> ₹ <span id="print-due-fees">NA</span></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Terms -->
+            <div class="text-[10px]">
+                <div class="font-bold mb-1 text-xs">Terms & Conditions :</div>
+                <ol class="list-decimal pl-4 space-y-0.5 text-slate-600">
+                    <li>All above mentioned Amount once paid are non refundable in any case whatsoever.</li>
+                    <li>Late payment will attract extra charges.</li>
+                    <li>Fees are non-transferable to another student/course.</li>
+                </ol>
+            </div>
+        </div>
+
+        <!-- Cut Line -->
+        <div class="relative text-center my-6">
+            <div class="absolute inset-0 flex items-center">
+                <div class="w-full border-t border-dashed border-slate-400"></div>
+            </div>
+            <div class="relative inline-block bg-white px-4 text-xs text-slate-500 font-medium">
+                ✂ Fold or Cut along this line
+            </div>
+        </div>
+
+        <!-- Office Copy -->
+        <div class="mb-4 text-center font-semibold text-xs">Office Copy</div>
+        <div class="border border-slate-300 p-4">
+            <!-- Header -->
+            <div class="flex justify-between items-start mb-4">
+                <div class="flex flex-1 pr-4">
+                    <div class="w-16 h-16 border border-slate-200 bg-slate-50 mr-4 flex items-center justify-center text-xs text-slate-400">
+                        <img src="/logo.png" alt="Logo" class="max-w-full max-h-full" onerror="this.style.display='none'">
+                    </div>
+                    <div>
+                        <div class="font-bold text-base">BK GROUP OF EDUCATION</div>
+                        <div class="text-xs text-slate-600 mt-1">2nd floor, Gajanan Plaza, Gharpure Ghat Road,<br>Ashok Stambh, Nashik-422001</div>
+                        <div class="text-xs text-slate-600 mt-1">Email : bkgroupofeducation1@gmail.com<br>Contact No. : 8888301363</div>
+                    </div>
+                </div>
+                <div class="w-[40%] border-l-2 border-slate-800 pl-4">
+                    <div class="font-bold text-base" id="print-student-name-2">Student Name</div>
+                    <div class="text-xs text-slate-600 mt-1">Address : <span id="print-address-2"></span></div>
+                    <div class="text-xs text-slate-600">Email : <span id="print-email-2"></span></div>
+                    <div class="text-xs text-slate-600">Contact No. : <span id="print-contact-2"></span></div>
+                </div>
+            </div>
+
+            <!-- Title -->
+            <div class="border-y-2 border-slate-800 py-1 text-center font-bold text-sm tracking-widest mb-2">
+                FEES RECEIPT
+            </div>
+
+            <!-- Meta -->
+            <div class="flex justify-between font-bold text-xs mb-2">
+                <div>Receipt Date : <span id="print-date-2"></span></div>
+                <div>Receipt No. : <span id="print-receipt-no-2">NA</span></div>
+            </div>
+
+            <!-- Grid -->
+            <div class="border-y border-slate-300 py-2 text-xs mb-2 space-y-2">
+                <div><span class="font-bold">Courses :</span> <span id="print-courses-2"></span></div>
+                <div><span class="font-bold">Amount received :</span> ₹ <span id="print-amount-2"></span></div>
+                <div><span class="font-bold">Amount received (in words) :</span> <span id="print-amount-words-2"></span></div>
+                
+                <div class="flex border-t border-slate-200 mt-2 pt-2">
+                    <div class="flex-1 space-y-2">
+                        <div><span class="font-bold">Payment mode :</span> <span id="print-payment-mode-2">Cash</span></div>
+                        <div><span class="font-bold">Total Fees :</span> ₹ <span id="print-total-fees-2">NA</span></div>
+                        <div><span class="font-bold">Installment (Yes/No) :</span> <span id="print-installment-2">NA</span></div>
+                        <div><span class="font-bold">Due Fees :</span> ₹ <span id="print-due-date-2"></span></div>
+                    </div>
+                    <div class="flex-1 space-y-2">
+                        <div><span class="font-bold">Cheque No. :</span> <span id="print-cheque-no-2">NA</span></div>
+                        <div><span class="font-bold">Bank Name :</span> <span id="print-bank-name-2">NA</span></div>
+                        <div><span class="font-bold">IFSC Code :</span> <span id="print-ifsc-2">NA</span></div>
+                        <div><span class="font-bold">Due Fees :</span> ₹ <span id="print-due-fees-2">NA</span></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Terms -->
+            <div class="text-[10px]">
+                <div class="font-bold mb-1 text-xs">Terms & Conditions :</div>
+                <ol class="list-decimal pl-4 space-y-0.5 text-slate-600">
+                    <li>All above mentioned Amount once paid are non refundable in any case whatsoever.</li>
+                    <li>Late payment will attract extra charges.</li>
+                    <li>Fees are non-transferable to another student/course.</li>
+                </ol>
+            </div>
+        </div>
+    </div>
+
     <script>
+        function numberToWords(num) {
+            const a = ['','One ','Two ','Three ','Four ', 'Five ','Six ','Seven ','Eight ','Nine ','Ten ','Eleven ','Twelve ','Thirteen ','Fourteen ','Fifteen ','Sixteen ','Seventeen ','Eighteen ','Nineteen '];
+            const b = ['', '', 'Twenty','Thirty','Forty','Fifty', 'Sixty','Seventy','Eighty','Ninety'];
+            if ((num = num.toString()).length > 9) return 'overflow';
+            let n = ('000000000' + num).substr(-9).match(/^(\d{2})(\d{2})(\d{2})(\d{1})(\d{2})$/);
+            if (!n) return 'Zero'; 
+            let str = '';
+            str += (n[1] != 0) ? (a[Number(n[1])] || b[n[1][0]] + ' ' + a[n[1][1]]) + 'Crore ' : '';
+            str += (n[2] != 0) ? (a[Number(n[2])] || b[n[2][0]] + ' ' + a[n[2][1]]) + 'Lakh ' : '';
+            str += (n[3] != 0) ? (a[Number(n[3])] || b[n[3][0]] + ' ' + a[n[3][1]]) + 'Thousand ' : '';
+            str += (n[4] != 0) ? (a[Number(n[4])] || b[n[4][0]] + ' ' + a[n[4][1]]) + 'Hundred ' : '';
+            str += (n[5] != 0) ? ((str != '') ? 'and ' : '') + (a[Number(n[5])] || b[n[5][0]] + ' ' + a[n[5][1]]) : '';
+            return (str.trim() + ' Rupees Only').trim();
+        }
+
+        function printReceipt() {
+            window.print();
+        }
         let currentStep = 1;
         let selectedCourses = [];
         const subjectMap = {
@@ -785,27 +1014,54 @@
 
             let net = base - disAmt + extraFee;
             document.getElementById('net-fee').value = Math.max(0, net).toLocaleString('en-IN');
+            if (typeof handlePaymentChange === 'function') handlePaymentChange();
+        }
+
+        function handlePaymentChange() {
+            let netStr = document.getElementById('net-fee').value.replace(/,/g, '');
+            let net = parseFloat(netStr) || 0;
+            let received = parseFloat(document.getElementById('amount-received').value) || 0;
+            
+            let due = Math.max(0, net - received);
+            document.getElementById('due-fees').value = due.toLocaleString('en-IN');
+            
+            document.getElementById('amount-received-words').value = numberToWords(received) || 'Zero';
         }
 
         // --- RECEIPT MODAL ---
         async function showReceipt() {
             const name = document.getElementById('student-name').value;
+            const aadhar = document.getElementById('aadhar').value;
+            const admissionDate = document.getElementById('admission-date').value;
+            const biometricId = document.getElementById('biometric-id').value;
+            const gender = document.getElementById('gender').value;
+            const dob = document.getElementById('dob').value;
             const email = document.getElementById('email').value;
+            const studentPhone = document.getElementById('student-phone').value;
+            const parentPhone = document.getElementById('parent-phone').value;
+            const marks10th = document.getElementById('marks-10th').value;
+            const address = document.getElementById('address').value;
+            const marks12th = document.getElementById('marks-12th').value;
             const branch = document.getElementById('branch').value;
             const fee = document.getElementById('net-fee').value;
-            const biometricId = document.getElementById('biometric-id').value;
 
             // Submit to Backend
             try {
-                const response = await fetch('/api/users/enroll', {
+                const response = await fetch('http://localhost:8080/api/users/enroll', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ name, email, role: 'student', fingerprint_id: biometricId })
+                    body: JSON.stringify({ 
+                        name, email, role: 'student', fingerprint_id: biometricId,
+                        aadhar, admissionDate, gender, dob, studentPhone, parentPhone,
+                        marks10th, marks12th, address, branch, courses: selectedCourses,
+                        fee: fee.replace(/,/g, '')
+                    })
                 });
                 
                 if (!response.ok) {
                     const data = await response.json();
                     showToast("Error saving to backend: " + (data.error || "Unknown error"));
+                    return; // Stop here if there was an error
                 }
             } catch (err) {
                 console.error("Backend offline or not reachable", err);
@@ -817,6 +1073,47 @@
             document.getElementById('receipt-branch').innerText = branch;
             document.getElementById('receipt-courses').innerText = selectedCourses.join(', ') || 'None';
             document.getElementById('receipt-fee').innerText = `₹${fee}`;
+
+            // Populate Printable Receipt Fields
+            const feeNum = fee.replace(/,/g, '');
+            const coursesText = selectedCourses.join(', ') || 'None';
+            const today = new Date().toLocaleDateString('en-GB');
+
+            const amtReceived = document.getElementById('amount-received').value || 0;
+            const amtReceivedWords = document.getElementById('amount-received-words').value || 'Zero';
+            const pMode = document.getElementById('payment-mode').value;
+            const installment = document.getElementById('installment-opt').value;
+            const dueFees = document.getElementById('due-fees').value;
+
+            // Student Copy
+            document.getElementById('print-student-name').innerText = name;
+            document.getElementById('print-address').innerText = address || 'NA';
+            document.getElementById('print-email').innerText = email || 'NA';
+            document.getElementById('print-contact').innerText = studentPhone || 'NA';
+            document.getElementById('print-date').innerText = today;
+            document.getElementById('print-receipt-no').innerText = Math.floor(Math.random() * 9000) + 1000;
+            document.getElementById('print-courses').innerText = coursesText;
+            document.getElementById('print-amount').innerText = amtReceived;
+            document.getElementById('print-amount-words').innerText = amtReceivedWords;
+            document.getElementById('print-payment-mode').innerText = pMode;
+            document.getElementById('print-total-fees').innerText = feeNum;
+            document.getElementById('print-installment').innerText = installment;
+            document.getElementById('print-due-date').innerText = dueFees;
+            
+            // Office Copy
+            document.getElementById('print-student-name-2').innerText = name;
+            document.getElementById('print-address-2').innerText = address || 'NA';
+            document.getElementById('print-email-2').innerText = email || 'NA';
+            document.getElementById('print-contact-2').innerText = studentPhone || 'NA';
+            document.getElementById('print-date-2').innerText = today;
+            document.getElementById('print-receipt-no-2').innerText = document.getElementById('print-receipt-no').innerText;
+            document.getElementById('print-courses-2').innerText = coursesText;
+            document.getElementById('print-amount-2').innerText = amtReceived;
+            document.getElementById('print-amount-words-2').innerText = amtReceivedWords;
+            document.getElementById('print-payment-mode-2').innerText = pMode;
+            document.getElementById('print-total-fees-2').innerText = feeNum;
+            document.getElementById('print-installment-2').innerText = installment;
+            document.getElementById('print-due-date-2').innerText = dueFees;
 
             const modal = document.getElementById('receipt-modal');
             const card = document.getElementById('receipt-card');
@@ -840,10 +1137,9 @@
             
             setTimeout(() => {
                 modal.classList.add('hidden');
+                // Redirect back to the Student List (break out of iframe if necessary)
+                window.top.location.href = '/admissions';
             }, 300);
-            
-            // Optional: reset form or redirect
-            // location.reload();
         }
 
     </script>

@@ -130,12 +130,39 @@ const userSchema = new mongoose.Schema({
   experience: { type: String },
   subject: { type: String },
   timing: { type: String },
+  profession: { type: String },
+  email: { type: String },
+  studentPhone: { type: String },
+  parentPhone: { type: String },
+  aadhar: { type: String },
+  gender: { type: String },
+  dob: { type: String },
+  marks10th: { type: String },
+  marks12th: { type: String },
+  address: { type: String },
+  branch: { type: String },
+  courses: { type: [String] },
+  fee: { type: Number },
+  enquiryDate: { type: String },
+  batchTiming: { type: String },
+  previousSchool: { type: String },
+  bankName: { type: String },
+  accountNumber: { type: String },
+  ifscCode: { type: String },
+  accountHolder: { type: String },
+  amountReceived: { type: String },
+  paymentMode: { type: String },
+  installment: { type: String },
+  receiptNo: { type: String },
+  amountReceivedWords: { type: String },
+  dueFees: { type: Number },
   salary: { type: Number },
   profession: { type: String },
-  photoUrl: { type: String, required: false }
-=======
-  photo: { type: String }
->>>>>>> Stashed changes
+  photoUrl: { type: String, required: false },
+  photo: { type: String },
+  experience: { type: String },
+  subject: { type: String },
+  timing: { type: String }
 });
 const User = mongoose.model('User', userSchema);
 
@@ -148,6 +175,13 @@ const punchSchema = new mongoose.Schema({
   createdAt: { type: Date, default: Date.now }
 });
 const Punch = mongoose.model('Punch', punchSchema);
+
+const counterSchema = new mongoose.Schema({
+  _id: { type: String, required: true },
+  seq: { type: Number, default: 1200 }
+});
+const Counter = mongoose.model('Counter', counterSchema);
+
 
 const deviceSchema = new mongoose.Schema({
   serialNumber: { type: String, required: true, unique: true },
@@ -539,10 +573,34 @@ app.post('/api/users/enroll', async (req, res) => {
       name,
       role: role || 'student',
       fingerprint_id,
+      email: req.body.email,
+      studentPhone: req.body.studentContact,
+      parentPhone: req.body.fatherContact || req.body.motherContact,
+      aadhar: req.body.aadhar,
+      gender: req.body.gender,
+      dob: req.body.dob,
+      marks10th: req.body.tenthPercent,
+      marks12th: req.body.twelfthPercent,
+      address: req.body.address,
+      branch: req.body.branch,
+      courses: req.body.course ? [req.body.course] : (req.body.batch ? [req.body.batch] : []),
+      fee: req.body.fee || req.body.totalFee,
+      enquiryDate: req.body.enquiryDate,
+      batchTiming: req.body.batchTiming,
+      previousSchool: req.body.previousSchool,
+      bankName: req.body.bankName,
+      accountNumber: req.body.accountNumber,
+      ifscCode: req.body.ifscCode,
+      accountHolder: req.body.accountHolder,
+      amountReceived: req.body.amountReceived,
+      paymentMode: req.body.paymentMode,
+      installment: req.body.installment,
+      receiptNo: req.body.receiptNo,
+      amountReceivedWords: req.body.amountReceivedWords,
+      dueFees: req.body.dueFees,
       experience,
       subject,
       timing,
-      salary: salary ? Number(salary) : 0,
       profession
     });
     console.log(`✅ Enrolled new ${role || 'student'}: ${name} with Biometric ID: ${fingerprint_id}`);
@@ -865,58 +923,36 @@ app.post('/api/devices/rename', async (req, res) => {
   }
 });
 
-<<<<<<< Updated upstream
-=======
-// Sync Users command queue API
-app.post('/api/devices/sync-users', (req, res) => {
-  const { serialNumber } = req.body;
-  if (!serialNumber) {
-    return res.status(400).json({ error: 'serialNumber is required' });
-  }
 
-  const cmdId = Date.now();
-  const cmdText = `C:${cmdId}:DATA QUERY USERINFO`;
-  queueCommand(serialNumber, cmdText);
-
-  console.log(`🎟️ Queued command for device ${serialNumber}: ${cmdText}`);
-  res.json({ success: true, message: 'Sync command queued. Waiting for device to pull...' });
-});
-
-// Sync Photos command queue API
-app.post('/api/devices/sync-photos', (req, res) => {
-  const { serialNumber } = req.body;
-  if (!serialNumber) {
-    return res.status(400).json({ error: 'serialNumber is required' });
-  }
-
-  // Queue both BIOPHOTO and PHOTO commands to cover ZK firmware variants
-  const cmdId1 = Date.now();
-  const cmdText1 = `C:${cmdId1}:DATA QUERY BIOPHOTO`;
-  queueCommand(serialNumber, cmdText1);
-
-  const cmdId2 = Date.now() + 1;
-  const cmdText2 = `C:${cmdId2}:DATA QUERY PHOTO`;
-  queueCommand(serialNumber, cmdText2);
-
-  console.log(`🎟️ Queued commands for device ${serialNumber} to sync photos: ${cmdText1}, ${cmdText2}`);
-  res.json({ success: true, message: 'Sync photos command queued. Waiting for device to pull...' });
-});
-
-const os = require('os');
-
-function getLocalIp() {
-  const networkInterfaces = os.networkInterfaces();
-  for (const interfaceName in networkInterfaces) {
-    for (const iface of networkInterfaces[interfaceName]) {
-      if (iface.family === 'IPv4' && !iface.internal) {
-        return iface.address;
-      }
+app.post('/api/receipts/generate', async (req, res) => {
+  try {
+    let counterDoc = await Counter.findOneAndUpdate(
+      { _id: 'receiptId' },
+      { $inc: { seq: 1 } },
+      { new: true }
+    );
+    
+    if (!counterDoc) {
+       counterDoc = new Counter({ _id: 'receiptId', seq: 1200 });
+       await counterDoc.save();
     }
+    
+    const receiptNo = counterDoc.seq;
+    const now = new Date();
+    const formattedDate = String(now.getDate()).padStart(2, '0') + '/' + String(now.getMonth() + 1).padStart(2, '0') + '/' + now.getFullYear();
+    
+    const payload = {
+      receiptNo: receiptNo.toString().padStart(4, '0'),
+      ...req.body,
+      generatedAt: formattedDate
+    };
+    
+    res.json(payload);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
   }
-  return '127.0.0.1';
-}
+});
 
->>>>>>> Stashed changes
 // Start unified server on ALL interfaces so LAN devices (eSSL) can reach it
 server.listen(PORT, '0.0.0.0', () => {
   console.log(`🚀 Unified Backend & ADMS Server is running on http://0.0.0.0:${PORT}`);
