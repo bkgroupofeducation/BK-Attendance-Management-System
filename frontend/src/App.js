@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { BrowserRouter as Router, Routes, Route, Link, Navigate, useLocation } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Link, useNavigate, Navigate, useLocation } from 'react-router-dom';
+import ReceiptPrintView from './ReceiptPrintView';
 import { io } from 'socket.io-client';
 import api from './api';
 
@@ -94,10 +95,7 @@ const Sidebar = ({ logout, user }) => {
               <li><Link to="/enroll-student" style={{ display: 'block', padding: '12px 20px 12px 40px', color: '#ecf0f1', textDecoration: 'none', fontSize: '14px', borderBottom: '1px solid #2c3e50', fontWeight: '400' }}>○ Enroll Student</Link></li>
               <li><Link to="/admissions" style={{ display: 'block', padding: '12px 20px 12px 40px', color: '#ecf0f1', textDecoration: 'none', fontSize: '14px', borderBottom: '1px solid #2c3e50', fontWeight: '400' }}>○ Bulk Upload</Link></li>
               <li><Link to="/admissions" style={{ display: 'block', padding: '12px 20px 12px 40px', color: '#ecf0f1', textDecoration: 'none', fontSize: '14px', borderBottom: '1px solid #2c3e50', fontWeight: '400' }}>○ Student List</Link></li>
-              <li><Link to="/admissions" style={{ display: 'block', padding: '12px 20px 12px 40px', color: '#ecf0f1', textDecoration: 'none', fontSize: '14px', borderBottom: '1px solid #2c3e50', fontWeight: '400' }}>○ Cancelled List</Link></li>
-              <li><Link to="/admissions" style={{ display: 'block', padding: '12px 20px 12px 40px', color: '#ecf0f1', textDecoration: 'none', fontSize: '14px', borderBottom: '1px solid #2c3e50', fontWeight: '400' }}>○ Absentees</Link></li>
-              <li><Link to="/admissions" style={{ display: 'block', padding: '12px 20px 12px 40px', color: '#ecf0f1', textDecoration: 'none', fontSize: '14px', borderBottom: '1px solid #2c3e50', fontWeight: '400' }}>○ Defaulters</Link></li>
-              <li><Link to="/admissions" style={{ display: 'block', padding: '12px 20px 12px 40px', color: '#ecf0f1', textDecoration: 'none', fontSize: '14px', borderBottom: '1px solid #2c3e50', fontWeight: '400' }}>○ Birthdays</Link></li>
+              <li><Link to="/birthdays" style={{ display: 'block', padding: '12px 20px 12px 40px', color: '#ecf0f1', textDecoration: 'none', fontSize: '14px', borderBottom: '1px solid #2c3e50', fontWeight: '400' }}>○ Birthday Reminders</Link></li>
             </ul>
           )}
         </li>
@@ -206,6 +204,7 @@ const Layout = ({ children, logout, user }) => (
 // --- PAGES ---
 const Dashboard = () => {
   const [stats, setStats] = useState(null);
+  const [users, setUsers] = useState([]);
   const [recent, setRecent] = useState([]);
   const [livePunches, setLivePunches] = useState([]);
   const [userMap, setUserMap] = useState({});
@@ -213,6 +212,7 @@ const Dashboard = () => {
   const toastRef = React.useRef(null);
 
   useEffect(() => {
+    api.get('/users').then(res => setUsers(res.data)).catch(() => {});
     api.get('/admin/dashboard').then(res => {
       setStats(res.data.stats);
       setRecent(res.data.recentAttendance);
@@ -240,6 +240,39 @@ const Dashboard = () => {
 
   const getInitials = (name) => name ? name.split(' ').map(w => w[0]).join('').toUpperCase().slice(0,2) : '??';
   const resolvedName = (punch) => punch.userName || userMap[String(punch.userId)] || `User ${punch.userId}`;
+
+  const getUpcomingBirthdays = () => {
+    const today = new Date();
+    const upcoming = users.filter(u => {
+      if (!u.dob) return false;
+      const dobDate = new Date(u.dob);
+      if (isNaN(dobDate)) return false;
+      
+      const bdayThisYear = new Date(today.getFullYear(), dobDate.getMonth(), dobDate.getDate());
+      let diffTime = bdayThisYear.getTime() - today.getTime();
+      
+      if (diffTime < -86400000) { 
+        bdayThisYear.setFullYear(today.getFullYear() + 1);
+        diffTime = bdayThisYear.getTime() - today.getTime();
+      }
+      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+      return diffDays >= 0 && diffDays <= 30;
+    }).map(u => {
+      const dobDate = new Date(u.dob);
+      const bdayThisYear = new Date(today.getFullYear(), dobDate.getMonth(), dobDate.getDate());
+      let diffTime = bdayThisYear.getTime() - today.getTime();
+      if (diffTime < -86400000) { 
+        bdayThisYear.setFullYear(today.getFullYear() + 1);
+      }
+      const diffDays = Math.ceil((bdayThisYear.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+      const age = bdayThisYear.getFullYear() - dobDate.getFullYear();
+      return { ...u, diffDays, age };
+    }).sort((a, b) => a.diffDays - b.diffDays);
+    return upcoming;
+  };
+
+  const upcomingBirthdays = getUpcomingBirthdays();
+
 
   return (
     <div>
@@ -494,7 +527,35 @@ const Dashboard = () => {
                 </div>
             </div>
 
-            <div className="dashboard-card">
+            
+            <div className="dashboard-card" style={{ marginTop: '20px', background: 'linear-gradient(135deg, #fff, #fff9fb)', border: '1px solid #ffe3ec' }}>
+                <h2 style={{ fontSize: '18px', marginBottom: '14px', display: 'flex', alignItems: 'center', gap: '8px' }}>🎉 Upcoming Birthdays</h2>
+                
+                {upcomingBirthdays.length === 0 ? (
+                  <div style={{ padding: '20px', textAlign: 'center', color: '#888', fontSize: '13px' }}>
+                    No birthdays in the next 30 days.
+                  </div>
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                    {upcomingBirthdays.map(u => (
+                      <div key={u.id} style={{ display: 'flex', alignItems: 'center', gap: '12px', background: 'white', padding: '10px', borderRadius: '8px', boxShadow: '0 2px 5px rgba(255,192,203,0.2)', border: '1px solid #ffe3ec' }}>
+                        <div style={{ width: '40px', height: '40px', borderRadius: '50%', background: 'linear-gradient(135deg, #ff9a9e 0%, #fecfef 99%, #fecfef 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontWeight: 'bold', fontSize: '16px' }}>
+                          {getInitials(u.name)}
+                        </div>
+                        <div style={{ flex: 1 }}>
+                          <div style={{ fontWeight: 600, fontSize: '14px', color: '#333' }}>{u.name}</div>
+                          <div style={{ fontSize: '11px', color: '#e84393' }}>
+                            {u.diffDays === 0 ? '🎂 TODAY! Turning ' + u.age : `In ${u.diffDays} days (${new Date(u.dob).toLocaleDateString('en-GB', { month: 'short', day: 'numeric' })})`} • <span style={{textTransform:'capitalize'}}>{u.role}</span>
+                          </div>
+                        </div>
+                        <button style={{ background: '#e84393', border: 'none', color: 'white', padding: '6px 10px', borderRadius: '6px', fontSize: '11px', cursor: 'pointer', fontWeight: 'bold' }}>Wish</button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+            </div>
+
+            <div className="dashboard-card" style={{ marginTop: '20px' }}>
                 <h2 style={{ fontSize: '18px', marginBottom: '10px' }}>📨 SMS Notifications</h2>
                 <div className="sms-log">
                     <div className="time">10:25 AM • Sent</div>
@@ -608,21 +669,30 @@ const AttendancePage = () => {
   );
 };
 
-const EnrollStudentPage = () => {
+const NewEnquiryPage = () => {
   return (
     <div style={{ height: 'calc(100vh - 100px)', width: '100%', padding: '0px' }}>
-      <iframe src="/enrollment.html" style={{ width: '100%', height: '100%', border: 'none', borderRadius: '12px' }} title="Enroll Student"></iframe>
+      <iframe src="/enrollment.html" style={{ width: '100%', height: '100%', border: 'none', borderRadius: '12px' }} title="New Enquiry"></iframe>
     </div>
   );
 };
 
 const AdmissionsPage = () => {
+  const [students, setStudents] = useState([]);
+  const [selectedStudent, setSelectedStudent] = useState(null);
+  
+  useEffect(() => {
+    api.get('/users').then(res => {
+      setStudents(res.data.filter(u => u.role === 'student'));
+    }).catch(err => console.error(err));
+  }, []);
+
   return (
     <div className="dashboard-card">
       <div className="card-header">
-          <h2>📝 Admission Forms Manager</h2>
+          <h2>📝 Student List & Admissions</h2>
           <div className="actions">
-              <button className="btn btn-primary">+ New Form</button>
+              <Link to="/enroll-student" className="btn btn-primary">+ New Enrollment</Link>
           </div>
       </div>
       <div className="tabs">
@@ -634,46 +704,95 @@ const AdmissionsPage = () => {
           <thead>
               <tr>
                   <th>Student Name</th>
-                  <th>Class</th>
-                  <th>Parent Info</th>
-                  <th>Submission Date</th>
+                  <th>Register No.</th>
+                  <th>Email Address</th>
+                  <th>Enrollment Date</th>
                   <th>Status</th>
                   <th>Actions</th>
               </tr>
           </thead>
           <tbody>
-              <tr>
-                  <td>Ayesha Fatima</td>
-                  <td>Class 10-A</td>
-                  <td>Mr. Khan (+91 98765 43210)</td>
-                  <td>18 June 2026</td>
-                  <td><span className="status pending">Pending</span></td>
-                  <td>
-                      <button className="btn btn-success" style={{ padding: '4px 10px', marginRight: '5px' }}>Approve</button>
-                      <button className="btn btn-danger" style={{ padding: '4px 10px' }}>Reject</button>
-                  </td>
-              </tr>
-              <tr>
-                  <td>Rohan Mehta</td>
-                  <td>Class 8-B</td>
-                  <td>Mrs. Mehta (+91 87654 32109)</td>
-                  <td>19 June 2026</td>
-                  <td><span className="status pending">Pending</span></td>
-                  <td>
-                      <button className="btn btn-success" style={{ padding: '4px 10px', marginRight: '5px' }}>Approve</button>
-                      <button className="btn btn-danger" style={{ padding: '4px 10px' }}>Reject</button>
-                  </td>
-              </tr>
-              <tr>
-                  <td>Priya Singh</td>
-                  <td>Class 9-C</td>
-                  <td>Mr. Singh (+91 78901 23456)</td>
-                  <td>15 June 2026</td>
-                  <td><span className="status approved">Approved</span></td>
-                  <td><span style={{ color: '#666', fontSize: '13px' }}>No actions</span></td>
-              </tr>
+              {students.map((s, idx) => (
+                <tr key={s.id || idx}>
+                    <td>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                        <div className="avatar" style={{ background: '#3498db' }}>{s.name.charAt(0)}</div> 
+                        {s.name}
+                      </div>
+                    </td>
+                    <td><code style={{ background: '#f0f2f5', padding: '4px 8px', borderRadius: '4px' }}>{s.fingerprint_id}</code></td>
+                    <td>{s.email || 'N/A'}</td>
+                    <td>{new Date().toLocaleDateString('en-GB')}</td>
+                    <td><span className="status approved">Enrolled</span></td>
+                    <td>
+                        <button className="btn btn-primary" style={{ padding: '4px 10px' }} onClick={() => setSelectedStudent(s)}>Profile</button>
+                    </td>
+                </tr>
+              ))}
+              {students.length === 0 && (
+                <tr>
+                  <td colSpan="6" style={{ textAlign: 'center', padding: '20px', color: '#888' }}>No enrolled students found.</td>
+                </tr>
+              )}
           </tbody>
       </table>
+
+      {selectedStudent && (
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 999 }}>
+          <div style={{ background: 'white', padding: '30px', borderRadius: '12px', width: '600px', maxHeight: '90vh', overflowY: 'auto', boxShadow: '0 4px 20px rgba(0,0,0,0.2)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #eee', paddingBottom: '15px', marginBottom: '20px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
+                <div className="avatar" style={{ background: '#8b5cf6', width: '50px', height: '50px', fontSize: '24px' }}>{selectedStudent.name.charAt(0)}</div>
+                <div>
+                  <h3 style={{ margin: 0, fontSize: '20px', color: '#333' }}>{selectedStudent.name}</h3>
+                  <div style={{ color: '#888', fontSize: '13px' }}>Enrolled • Register No: {selectedStudent.fingerprint_id}</div>
+                </div>
+              </div>
+              <div style={{ display: 'flex', gap: '10px' }}>
+                <button onClick={() => window.print()} style={{ background: '#8b5cf6', color: 'white', border: 'none', borderRadius: '6px', padding: '8px 16px', cursor: 'pointer', fontWeight: 'bold' }}>🖨️ Print Receipt</button>
+                <button onClick={() => setSelectedStudent(null)} style={{ background: '#f8f9fa', border: '1px solid #ddd', borderRadius: '50%', width: '32px', height: '32px', fontSize: '18px', cursor: 'pointer', color: '#555', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>&times;</button>
+              </div>
+            </div>
+            
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px', fontSize: '14px', color: '#555' }}>
+              <div><strong style={{ color: '#333', display: 'block', marginBottom: '4px' }}>Biometric ID / Reg No</strong> {selectedStudent.fingerprint_id || 'N/A'}</div>
+              <div><strong style={{ color: '#333', display: 'block', marginBottom: '4px' }}>Email Id</strong> {selectedStudent.email || 'N/A'}</div>
+              <div><strong style={{ color: '#333', display: 'block', marginBottom: '4px' }}>Student Phone</strong> {selectedStudent.studentPhone || 'N/A'}</div>
+              <div><strong style={{ color: '#333', display: 'block', marginBottom: '4px' }}>Parent Phone</strong> {selectedStudent.parentPhone || 'N/A'}</div>
+              <div><strong style={{ color: '#333', display: 'block', marginBottom: '4px' }}>Aadhar Number</strong> {selectedStudent.aadhar || 'N/A'}</div>
+              <div><strong style={{ color: '#333', display: 'block', marginBottom: '4px' }}>Gender</strong> {selectedStudent.gender || 'N/A'}</div>
+              <div><strong style={{ color: '#333', display: 'block', marginBottom: '4px' }}>Date of Birth</strong> {selectedStudent.dob || 'N/A'}</div>
+              <div><strong style={{ color: '#333', display: 'block', marginBottom: '4px' }}>10th Marks</strong> {selectedStudent.marks10th ? `${selectedStudent.marks10th}%` : 'N/A'}</div>
+              <div><strong style={{ color: '#333', display: 'block', marginBottom: '4px' }}>12th Marks</strong> {selectedStudent.marks12th ? `${selectedStudent.marks12th}%` : 'N/A'}</div>
+              <div><strong style={{ color: '#333', display: 'block', marginBottom: '4px' }}>Enquiry Date</strong> {selectedStudent.enquiryDate || 'N/A'}</div>
+              <div><strong style={{ color: '#333', display: 'block', marginBottom: '4px' }}>Previous School</strong> {selectedStudent.previousSchool || 'N/A'}</div>
+              <div style={{ gridColumn: '1 / -1' }}><strong style={{ color: '#333', display: 'block', marginBottom: '4px' }}>Full Address</strong> {selectedStudent.address || 'N/A'}</div>
+              <div style={{ gridColumn: '1 / -1', borderTop: '1px solid #eee', paddingTop: '20px', marginTop: '5px' }}></div>
+              <div><strong style={{ color: '#333', display: 'block', marginBottom: '4px' }}>Branch</strong> {selectedStudent.branch || 'N/A'}</div>
+              <div><strong style={{ color: '#333', display: 'block', marginBottom: '4px' }}>Enrolled Courses</strong> {selectedStudent.courses?.join(', ') || 'N/A'}</div>
+              <div><strong style={{ color: '#333', display: 'block', marginBottom: '4px' }}>Batch Timing</strong> {selectedStudent.batchTiming || 'N/A'}</div>
+              
+              <div style={{ gridColumn: '1 / -1', borderTop: '1px solid #eee', paddingTop: '20px', marginTop: '5px' }}></div>
+              <div><strong style={{ color: '#333', display: 'block', marginBottom: '4px' }}>Bank Name</strong> {selectedStudent.bankName || 'N/A'}</div>
+              <div><strong style={{ color: '#333', display: 'block', marginBottom: '4px' }}>Account Holder</strong> {selectedStudent.accountHolder || 'N/A'}</div>
+              <div><strong style={{ color: '#333', display: 'block', marginBottom: '4px' }}>Account Number</strong> {selectedStudent.accountNumber || 'N/A'}</div>
+              <div><strong style={{ color: '#333', display: 'block', marginBottom: '4px' }}>IFSC Code</strong> {selectedStudent.ifscCode || 'N/A'}</div>
+              
+              <div style={{ gridColumn: '1 / -1', borderTop: '1px solid #eee', paddingTop: '20px', marginTop: '5px' }}></div>
+              <div><strong style={{ color: '#333', display: 'block', marginBottom: '4px' }}>Installment Enabled</strong> {selectedStudent.installment || 'N/A'}</div>
+              <div><strong style={{ color: '#333', display: 'block', marginBottom: '4px' }}>Payment Mode</strong> {selectedStudent.paymentMode || 'N/A'}</div>
+              <div><strong style={{ color: '#333', display: 'block', marginBottom: '4px' }}>Amount Received</strong> {selectedStudent.amountReceived ? `₹${selectedStudent.amountReceived}` : 'N/A'}</div>
+              <div style={{ gridColumn: '1 / -1', background: '#f3e8ff', padding: '15px', borderRadius: '8px', color: '#6b21a8', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <strong style={{ fontSize: '15px' }}>Total Net Fees</strong> 
+                <span style={{ fontSize: '20px', fontWeight: 'bold' }}>₹{selectedStudent.fee || 0}</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+      
+      {/* Hidden receipt for printing */}
+      <ReceiptPrintView student={selectedStudent} />
     </div>
   );
 };
@@ -692,6 +811,8 @@ const TeachersPage = () => {
   const [timing, setTiming] = useState('');
   const [salary, setSalary] = useState('');
   const [profession, setProfession] = useState('');
+  const [batch, setBatch] = useState('11th PCMB');
+  const [otherBatch, setOtherBatch] = useState('');
 
   const fetchTeachers = () => {
     api.get('/users').then(res => {
@@ -705,10 +826,11 @@ const TeachersPage = () => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    const finalBatch = batch === 'Other' ? otherBatch : batch;
     try {
-      await api.post('/users/enroll', { name, email, role, fingerprint_id: fingerprintId, experience, subject, timing, salary, profession });
+      await api.post('/users/enroll', { name, email, role, fingerprint_id: fingerprintId, experience, subject, timing, salary, profession, batch: finalBatch });
       setShowModal(false);
-      setName(''); setEmail(''); setFingerprintId(''); setExperience(''); setSubject(''); setTiming(''); setSalary(''); setProfession('');
+      setName(''); setEmail(''); setFingerprintId(''); setExperience(''); setSubject(''); setTiming(''); setSalary(''); setProfession(''); setBatch('11th PCMB'); setOtherBatch('');
       fetchTeachers();
     } catch (err) {
       alert("Error adding " + role + ": " + (err.response?.data?.error || err.message));
@@ -740,7 +862,7 @@ const TeachersPage = () => {
                 <tr key={t.id}>
                     <td><div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}><div className="avatar">{t.name.charAt(0)}</div> {t.name}</div></td>
                     <td style={{ textTransform: 'capitalize' }}>{t.role}</td>
-                    <td>{t.role === 'teacher' ? (t.subject || 'N/A') : (t.profession || 'N/A')}</td>
+                    <td>{t.role === 'teacher' ? `${t.subject || 'N/A'} ${t.batch ? `(${t.batch})` : ''}` : (t.profession || 'N/A')}</td>
                     <td>₹ {t.salary ? t.salary.toLocaleString('en-IN') : '0'}</td>
                     <td><code style={{ background: '#f0f2f5', padding: '4px 8px', borderRadius: '4px' }}>{t.fingerprint_id}</code></td>
                     <td><button className="btn btn-warning" style={{ padding: '4px 10px' }}>💰 Details</button></td>
@@ -780,10 +902,6 @@ const TeachersPage = () => {
               <div style={{ marginBottom: '15px' }}>
                 <input type="email" placeholder="Email Address" value={email} onChange={e => setEmail(e.target.value)} style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid #ddd' }} />
               </div>
-              
-              <div style={{ marginBottom: '15px' }}>
-                <input type="number" placeholder="Base Salary (₹)" value={salary} onChange={e => setSalary(e.target.value)} style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid #ddd' }} />
-              </div>
 
               {role === 'teacher' && (
                 <div style={{ background: '#f8f9fa', padding: '15px', borderRadius: '8px', marginBottom: '20px', border: '1px solid #eee' }}>
@@ -791,6 +909,14 @@ const TeachersPage = () => {
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
                     <input type="text" placeholder="Topic / Subject" value={subject} onChange={e => setSubject(e.target.value)} style={{ padding: '10px', borderRadius: '6px', border: '1px solid #ddd' }} />
                     <input type="text" placeholder="Timing (e.g. 9 AM - 1 PM)" value={timing} onChange={e => setTiming(e.target.value)} style={{ padding: '10px', borderRadius: '6px', border: '1px solid #ddd' }} />
+                    <select value={batch} onChange={e => setBatch(e.target.value)} style={{ padding: '10px', borderRadius: '6px', border: '1px solid #ddd', gridColumn: batch === 'Other' ? 'span 1' : 'span 2' }}>
+                      <option value="11th PCMB">11th PCMB</option>
+                      <option value="12th PCMB">12th PCMB</option>
+                      <option value="Other">Other</option>
+                    </select>
+                    {batch === 'Other' && (
+                      <input type="text" placeholder="Enter custom batch" value={otherBatch} onChange={e => setOtherBatch(e.target.value)} style={{ padding: '10px', borderRadius: '6px', border: '1px solid #ddd' }} />
+                    )}
                   </div>
                 </div>
               )}
@@ -845,76 +971,299 @@ const Simulator = () => {
   );
 };
 
-const NewEnquiryPage = () => {
+const EnrollStudentPage = () => {
+  const [step, setStep] = useState(1);
+  const [formData, setFormData] = useState({
+    name: '', aadhar: '', enquiryDate: new Date().toISOString().split('T')[0], gender: 'Male', dob: '', email: '', fingerprint_id: '', address: '',
+    fatherContact: '', motherContact: '', studentContact: '',
+    branch: '', course: '', batchTiming: '',
+    previousSchool: '', tenthPercent: '', twelfthPercent: '',
+    bankName: '', accountNumber: '', ifscCode: '', accountHolder: '',
+    amountReceived: '', paymentMode: '', installment: 'No', totalFee: ''
+  });
+  const [loading, setLoading] = useState(false);
+
+  const handleInput = (e) => setFormData({ ...formData, [e.target.name]: e.target.value });
+
+  const getStepProgressWidth = () => {
+    if (step === 1) return '0%';
+    if (step === 2) return '33%';
+    if (step === 3) return '66%';
+    if (step === 4) return '100%';
+    return '0%';
+  };
+
+  const numberToWords = (num) => {
+    const nStr = num ? num.toString() : '0';
+    const nNum = parseInt(nStr, 10);
+    if (isNaN(nNum) || nNum === 0) return 'Zero';
+    const a = ['','One ','Two ','Three ','Four ', 'Five ','Six ','Seven ','Eight ','Nine ','Ten ','Eleven ','Twelve ','Thirteen ','Fourteen ','Fifteen ','Sixteen ','Seventeen ','Eighteen ','Nineteen '];
+    const b = ['', '', 'Twenty','Thirty','Forty','Fifty', 'Sixty','Seventy','Eighty','Ninety'];
+    if (nStr.length > 9) return 'overflow';
+    const n = ('000000000' + nStr).substr(-9).match(/^(\d{2})(\d{2})(\d{2})(\d{1})(\d{2})$/);
+    if (!n) return 'Zero';
+    let str = '';
+    str += (n[1] != 0) ? (a[Number(n[1])] || b[n[1][0]] + ' ' + a[n[1][1]]) + 'Crore ' : '';
+    str += (n[2] != 0) ? (a[Number(n[2])] || b[n[2][0]] + ' ' + a[n[2][1]]) + 'Lakh ' : '';
+    str += (n[3] != 0) ? (a[Number(n[3])] || b[n[3][0]] + ' ' + a[n[3][1]]) + 'Thousand ' : '';
+    str += (n[4] != 0) ? (a[Number(n[4])] || b[n[4][0]] + ' ' + a[n[4][1]]) + 'Hundred ' : '';
+    str += (n[5] != 0) ? ((str != '') ? 'and ' : '') + (a[Number(n[5])] || b[n[5][0]] + ' ' + a[n[5][1]]) : '';
+    return str.trim() + ' Only';
+  };
+
+  const netFee = parseInt(formData.totalFee) || 0;
+  const receivedNum = parseInt(formData.amountReceived) || 0;
+  const dueFees = Math.max(0, netFee - receivedNum);
+  const amountWords = receivedNum ? numberToWords(receivedNum) : 'Zero';
+
+  const handleSubmit = async () => {
+    setLoading(true);
+    try {
+        let receiptNo = null;
+        if (receivedNum > 0) {
+            const recRes = await api.post('/receipts/generate', {
+                studentName: formData.name,
+                courseName: formData.course,
+                amountReceived: receivedNum,
+                paymentMode: formData.paymentMode
+            });
+            receiptNo = recRes.data.receiptNo;
+        }
+
+        const payload = {
+            ...formData,
+            role: 'student',
+            fee: netFee,
+            dueFees,
+            amountReceivedWords: amountWords,
+            receiptNo
+        };
+        const res = await api.post('/users/enroll', payload);
+        
+        if (receiptNo) {
+            alert("Student Enrollment Successful! Receipt No generated: " + receiptNo);
+        } else {
+            alert('Student Enrollment Successful!');
+        }
+        window.location.href = '/admissions';
+    } catch (err) {
+        alert('Error: ' + (err.response?.data?.error || err.message));
+    }
+    setLoading(false);
+  };
+
   return (
     <div style={{ background: 'white', padding: '30px', borderRadius: '8px', minHeight: '600px', boxShadow: '0 2px 10px rgba(0,0,0,0.05)' }}>
       <div style={{ display: 'inline-block', background: '#f3e8ff', color: '#8b5cf6', padding: '8px 16px', borderRadius: '20px', fontSize: '14px', fontWeight: 'bold', marginBottom: '50px' }}>
-        <span style={{ marginRight: '8px' }}>👤+</span> Enroll New Enquiry
+        <span style={{ marginRight: '8px' }}>👤+</span> Enroll Student
       </div>
       
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '60px', position: 'relative' }}>
-        <div style={{ position: 'absolute', top: '15px', left: '15%', right: '15%', height: '2px', background: '#e0e0e0', zIndex: 1 }}>
-          <div style={{ width: '30%', height: '100%', background: '#8b5cf6' }}></div>
+        <div style={{ position: 'absolute', top: '15px', left: '12%', right: '12%', height: '2px', background: '#e0e0e0', zIndex: 1 }}>
+          <div style={{ width: getStepProgressWidth(), height: '100%', background: '#8b5cf6', transition: 'width 0.3s' }}></div>
         </div>
-        
-        <div style={{ textAlign: 'center', position: 'relative', zIndex: 2, background: 'white', padding: '0 10px', flex: 1 }}>
-          <div style={{ width: '20px', height: '20px', borderRadius: '50%', border: '6px solid #8b5cf6', background: 'white', margin: '0 auto 10px' }}></div>
-          <div style={{ fontWeight: 'bold', color: '#555', marginTop: '10px' }}>Basic Details</div>
-          <div style={{ fontSize: '12px', color: '#888' }}>Setup Basic Details</div>
-        </div>
-        <div style={{ textAlign: 'center', position: 'relative', zIndex: 2, background: 'white', padding: '0 10px', flex: 1 }}>
-          <div style={{ width: '24px', height: '24px', borderRadius: '50%', border: '2px solid #e0e0e0', background: 'white', margin: '4px auto 10px' }}></div>
-          <div style={{ fontWeight: 'bold', color: '#888', marginTop: '10px' }}>Class Details</div>
-          <div style={{ fontSize: '12px', color: '#aaa' }}>Setup Class Details</div>
-        </div>
-        <div style={{ textAlign: 'center', position: 'relative', zIndex: 2, background: 'white', padding: '0 10px', flex: 1 }}>
-          <div style={{ width: '24px', height: '24px', borderRadius: '50%', border: '2px solid #e0e0e0', background: 'white', margin: '4px auto 10px' }}></div>
-          <div style={{ fontWeight: 'bold', color: '#888', marginTop: '10px' }}>Academic Details</div>
-          <div style={{ fontSize: '12px', color: '#aaa' }}>Setup Academic Details</div>
-        </div>
+
+        {[
+          { id: 1, title: 'Basic Details', desc: 'Setup Basic Details' },
+          { id: 2, title: 'Class Details', desc: 'Setup Class Details' },
+          { id: 3, title: 'Academic Details', desc: 'Setup Academic Details' },
+          { id: 4, title: 'Banking Details', desc: 'Setup Banking Details' }
+        ].map((s) => (
+          <div key={s.id} onClick={() => setStep(s.id)} style={{ textAlign: 'center', position: 'relative', zIndex: 2, background: 'white', padding: '0 10px', flex: 1, cursor: 'pointer' }}>
+            <div style={{
+              width: step === s.id ? '20px' : '24px',
+              height: step === s.id ? '20px' : '24px',
+              borderRadius: '50%',
+              border: step >= s.id ? '6px solid #8b5cf6' : '2px solid #e0e0e0',
+              background: 'white',
+              margin: step === s.id ? '0 auto 10px' : '4px auto 10px',
+              transition: 'all 0.3s'
+            }}></div>
+            <div style={{ fontWeight: 'bold', color: step >= s.id ? '#555' : '#888', marginTop: '10px' }}>{s.title}</div>
+            <div style={{ fontSize: '12px', color: '#aaa' }}>{s.desc}</div>
+          </div>
+        ))}
       </div>
 
-      <div style={{ display: 'inline-block', background: '#f3e8ff', color: '#8b5cf6', padding: '6px 12px', borderRadius: '20px', fontSize: '13px', marginBottom: '20px' }}>
-        👤 Basic Detail
-      </div>
+      {step === 1 && (
+        <div>
+          <div style={{ display: 'inline-block', background: '#f3e8ff', color: '#8b5cf6', padding: '6px 12px', borderRadius: '20px', fontSize: '13px', marginBottom: '20px' }}>
+            👤 Basic Detail
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '25px', marginTop: '10px' }}>
+            <div>
+              <input type="text" name="name" value={formData.name} onChange={handleInput} placeholder="Student Name*" style={{ width: '100%', padding: '14px', border: '1px solid #e0e0e0', borderRadius: '6px', outline: 'none', color: '#555' }} />
+            </div>
+            <div>
+              <input type="text" name="aadhar" value={formData.aadhar} onInput={(e) => { e.target.value = e.target.value.replace(/\D/g, '').slice(0, 12); handleInput(e); }} placeholder="Aadhar Number" style={{ width: '100%', padding: '14px', border: '1px solid #e0e0e0', borderRadius: '6px', outline: 'none' }} />
+            </div>
+            <div style={{ position: 'relative' }}>
+              <label style={{ position: 'absolute', top: '-8px', left: '10px', background: 'white', padding: '0 5px', fontSize: '12px', color: '#666' }}>Enquiry Date*</label>
+              <input type="date" name="enquiryDate" value={formData.enquiryDate} onChange={handleInput} style={{ width: '100%', padding: '14px', border: '1px solid #e0e0e0', borderRadius: '6px', outline: 'none', color: '#555' }} />
+            </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '25px', marginTop: '10px' }}>
-        <div>
-          <input type="text" placeholder="Student Name*" style={{ width: '100%', padding: '14px', border: '1px solid #e74c3c', borderRadius: '6px', outline: 'none', color: '#e74c3c' }} />
-          <div style={{ color: '#e74c3c', fontSize: '12px', marginTop: '6px' }}>Please enter student name</div>
-        </div>
-        <div>
-          <input type="text" placeholder="Aadhar Number" style={{ width: '100%', padding: '14px', border: '1px solid #e0e0e0', borderRadius: '6px', outline: 'none' }} />
-        </div>
-        <div style={{ position: 'relative' }}>
-          <label style={{ position: 'absolute', top: '-8px', left: '10px', background: 'white', padding: '0 5px', fontSize: '12px', color: '#666' }}>Enquiry Date*</label>
-          <input type="date" defaultValue="2026-06-20" style={{ width: '100%', padding: '14px', border: '1px solid #e0e0e0', borderRadius: '6px', outline: 'none', color: '#555' }} />
-        </div>
+            <div style={{ position: 'relative' }}>
+              <label style={{ position: 'absolute', top: '-8px', left: '10px', background: 'white', padding: '0 5px', fontSize: '12px', color: '#666' }}>Gender</label>
+              <select name="gender" value={formData.gender} onChange={handleInput} style={{ width: '100%', padding: '14px', border: '1px solid #e0e0e0', borderRadius: '6px', outline: 'none', color: '#555', appearance: 'none', background: 'url("data:image/svg+xml;utf8,<svg fill=%27black%27 height=%2724%27 viewBox=%270 0 24 24%27 width=%2724%27 xmlns=%27http://www.w3.org/2000/svg%27><path d=%27M7 10l5 5 5-5z%27/><path d=%27M0 0h24v24H0z%27 fill=%27none%27/></svg>") no-repeat right 10px center' }}>
+                <option>Male</option>
+                <option>Female</option>
+                <option>Transgender</option>
+                <option>Other</option>
+              </select>
+            </div>
+            <div style={{ position: 'relative' }}>
+              <label style={{ position: 'absolute', top: '-8px', left: '10px', background: 'white', padding: '0 5px', fontSize: '12px', color: '#666' }}>Date of Birth</label>
+              <input type="date" name="dob" value={formData.dob} onChange={handleInput} style={{ width: '100%', padding: '14px', border: '1px solid #e0e0e0', borderRadius: '6px', outline: 'none', color: '#999' }} />
+            </div>
+            <div>
+              <input type="email" name="email" value={formData.email} onChange={handleInput} placeholder="Email Id" style={{ width: '100%', padding: '14px', border: '1px solid #e0e0e0', borderRadius: '6px', outline: 'none' }} />
+            </div>
+            <div>
+              <input type="text" name="fingerprint_id" value={formData.fingerprint_id} onChange={handleInput} placeholder="Biometric Registration No." style={{ width: '100%', padding: '14px', border: '1px solid #e0e0e0', borderRadius: '6px', outline: 'none' }} />
+            </div>
 
-        <div style={{ position: 'relative' }}>
-          <label style={{ position: 'absolute', top: '-8px', left: '10px', background: 'white', padding: '0 5px', fontSize: '12px', color: '#666' }}>Gender</label>
-          <select style={{ width: '100%', padding: '14px', border: '1px solid #e0e0e0', borderRadius: '6px', outline: 'none', color: '#555', appearance: 'none', background: 'url("data:image/svg+xml;utf8,<svg fill=%27black%27 height=%2724%27 viewBox=%270 0 24 24%27 width=%2724%27 xmlns=%27http://www.w3.org/2000/svg%27><path d=%27M7 10l5 5 5-5z%27/><path d=%27M0 0h24v24H0z%27 fill=%27none%27/></svg>") no-repeat right 10px center' }}>
-            <option>Male</option>
-            <option>Female</option>
-          </select>
+            <div>
+              <input type="text" name="fatherContact" value={formData.fatherContact} onInput={(e) => { e.target.value = e.target.value.replace(/\D/g, '').slice(0, 10); handleInput(e); }} placeholder="Father Contact Number" style={{ width: '100%', padding: '14px', border: '1px solid #e0e0e0', borderRadius: '6px', outline: 'none' }} />
+            </div>
+            <div>
+              <input type="text" name="motherContact" value={formData.motherContact} onInput={(e) => { e.target.value = e.target.value.replace(/\D/g, '').slice(0, 10); handleInput(e); }} placeholder="Mother Contact Number" style={{ width: '100%', padding: '14px', border: '1px solid #e0e0e0', borderRadius: '6px', outline: 'none' }} />
+            </div>
+            <div>
+              <input type="text" name="studentContact" value={formData.studentContact} onInput={(e) => { e.target.value = e.target.value.replace(/\D/g, '').slice(0, 10); handleInput(e); }} placeholder="Student Contact Number" style={{ width: '100%', padding: '14px', border: '1px solid #e0e0e0', borderRadius: '6px', outline: 'none' }} />
+            </div>
+            <div style={{ gridColumn: '1 / -1' }}>
+              <textarea name="address" value={formData.address} onChange={handleInput} placeholder="Full Residential Address" rows="3" style={{ width: '100%', padding: '14px', border: '1px solid #e0e0e0', borderRadius: '6px', outline: 'none', resize: 'vertical' }}></textarea>
+            </div>
+          </div>
         </div>
-        <div style={{ position: 'relative' }}>
-          <label style={{ position: 'absolute', top: '-8px', left: '10px', background: 'white', padding: '0 5px', fontSize: '12px', color: '#666' }}>Date of Birth</label>
-          <input type="date" style={{ width: '100%', padding: '14px', border: '1px solid #e0e0e0', borderRadius: '6px', outline: 'none', color: '#999' }} />
-        </div>
-        <div>
-          <input type="email" placeholder="Email Id" style={{ width: '100%', padding: '14px', border: '1px solid #e0e0e0', borderRadius: '6px', outline: 'none' }} />
-        </div>
+      )}
 
+      {step === 2 && (
         <div>
-          <input type="text" placeholder="Father Contact Number" style={{ width: '100%', padding: '14px', border: '1px solid #e0e0e0', borderRadius: '6px', outline: 'none' }} />
+          <div style={{ display: 'inline-block', background: '#f3e8ff', color: '#8b5cf6', padding: '6px 12px', borderRadius: '20px', fontSize: '13px', marginBottom: '20px' }}>
+            📚 Class Detail
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '25px', marginTop: '10px' }}>
+            <div>
+              <select name="branch" value={formData.branch} onChange={handleInput} style={{ width: '100%', padding: '14px', border: '1px solid #e0e0e0', borderRadius: '6px', outline: 'none', color: '#555', appearance: 'none', background: 'url("data:image/svg+xml;utf8,<svg fill=%27black%27 height=%2724%27 viewBox=%270 0 24 24%27 width=%2724%27 xmlns=%27http://www.w3.org/2000/svg%27><path d=%27M7 10l5 5 5-5z%27/><path d=%27M0 0h24v24H0z%27 fill=%27none%27/></svg>") no-repeat right 10px center' }}>
+                <option value="" disabled>Select Branch</option>
+                <option>Nashik Main</option>
+              </select>
+            </div>
+            <div>
+              <select name="course" value={formData.course} onChange={handleInput} style={{ width: '100%', padding: '14px', border: '1px solid #e0e0e0', borderRadius: '6px', outline: 'none', color: '#555', appearance: 'none', background: 'url("data:image/svg+xml;utf8,<svg fill=%27black%27 height=%2724%27 viewBox=%270 0 24 24%27 width=%2724%27 xmlns=%27http://www.w3.org/2000/svg%27><path d=%27M7 10l5 5 5-5z%27/><path d=%27M0 0h24v24H0z%27 fill=%27none%27/></svg>") no-repeat right 10px center' }}>
+                <option value="" disabled>Select Course</option>
+                <option>Staff Selection Commission (SSC-CGL)</option>
+                <option>POLICE/ARMY/MILITARY TRAINING BATCH</option>
+                <option>XI - Science PCMB [JEE-NEET-CET]</option>
+                <option>XII - Science PCMB [JEE-NEET-CET]</option>
+                <option>UPSC - Civil Services Examination</option>
+                <option>UGC NET/ MH SET/ CSIR NET</option>
+                <option>MBA Entrance (CAT/MAT/MH CET)</option>
+                <option>MPSC - State Services Examination</option>
+                <option>Maharashtra Engineering Services (MES)</option>
+                <option>Banking [RBI/SBI/NABARD/SSC/IBPS]</option>
+                <option>MPSC (Group B & C)</option>
+                <option>RRB-NTPC</option>
+              </select>
+            </div>
+            <div>
+              <input type="text" name="batchTiming" value={formData.batchTiming} onChange={handleInput} placeholder="Batch Timing" style={{ width: '100%', padding: '14px', border: '1px solid #e0e0e0', borderRadius: '6px', outline: 'none' }} />
+            </div>
+          </div>
         </div>
+      )}
+
+      {step === 3 && (
         <div>
-          <input type="text" placeholder="Mother Contact Number" style={{ width: '100%', padding: '14px', border: '1px solid #e0e0e0', borderRadius: '6px', outline: 'none' }} />
+          <div style={{ display: 'inline-block', background: '#f3e8ff', color: '#8b5cf6', padding: '6px 12px', borderRadius: '20px', fontSize: '13px', marginBottom: '20px' }}>
+            🎓 Academic Detail
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '25px', marginTop: '10px' }}>
+            <div>
+              <input type="text" name="previousSchool" value={formData.previousSchool} onChange={handleInput} placeholder="Previous School/College Name" style={{ width: '100%', padding: '14px', border: '1px solid #e0e0e0', borderRadius: '6px', outline: 'none' }} />
+            </div>
+            <div>
+              <input type="number" name="tenthPercent" value={formData.tenthPercent} onChange={handleInput} placeholder="10th Percentage" style={{ width: '100%', padding: '14px', border: '1px solid #e0e0e0', borderRadius: '6px', outline: 'none' }} />
+            </div>
+            <div>
+              <input type="number" name="twelfthPercent" value={formData.twelfthPercent} onChange={handleInput} placeholder="12th Percentage" style={{ width: '100%', padding: '14px', border: '1px solid #e0e0e0', borderRadius: '6px', outline: 'none' }} />
+            </div>
+          </div>
         </div>
+      )}
+
+      {step === 4 && (
         <div>
-          <input type="text" placeholder="Student Contact Number" style={{ width: '100%', padding: '14px', border: '1px solid #e0e0e0', borderRadius: '6px', outline: 'none' }} />
+          <div style={{ display: 'inline-block', background: '#f3e8ff', color: '#8b5cf6', padding: '6px 12px', borderRadius: '20px', fontSize: '13px', marginBottom: '20px' }}>
+            🏦 Banking Detail
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '25px', marginTop: '10px' }}>
+            <div>
+              <input type="text" name="bankName" value={formData.bankName} onChange={handleInput} placeholder="Bank Name" style={{ width: '100%', padding: '14px', border: '1px solid #e0e0e0', borderRadius: '6px', outline: 'none' }} />
+            </div>
+            <div>
+              <input type="text" name="accountNumber" value={formData.accountNumber} onInput={(e) => { e.target.value = e.target.value.replace(/\D/g, ''); handleInput(e); }} placeholder="Account Number" style={{ width: '100%', padding: '14px', border: '1px solid #e0e0e0', borderRadius: '6px', outline: 'none' }} />
+            </div>
+            <div>
+              <input type="text" name="ifscCode" value={formData.ifscCode} onChange={handleInput} placeholder="IFSC Code" style={{ width: '100%', padding: '14px', border: '1px solid #e0e0e0', borderRadius: '6px', outline: 'none' }} />
+            </div>
+            <div>
+              <input type="text" name="accountHolder" value={formData.accountHolder} onChange={handleInput} placeholder="Account Holder Name" style={{ width: '100%', padding: '14px', border: '1px solid #e0e0e0', borderRadius: '6px', outline: 'none' }} />
+            </div>
+          </div>
+          <div style={{ gridColumn: '1 / -1', borderTop: '1px solid #eee', marginTop: '15px', paddingTop: '25px' }}>
+            <div style={{ fontWeight: 'bold', color: '#555', marginBottom: '15px' }}>Fees & Payment Details</div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '25px' }}>
+              <div>
+                <input type="number" name="totalFee" value={formData.totalFee} onChange={handleInput} placeholder="Total Fee (₹)" style={{ width: '100%', padding: '14px', border: '1px solid #e0e0e0', borderRadius: '6px', outline: 'none' }} />
+              </div>
+              <div>
+                <input type="number" name="amountReceived" value={formData.amountReceived} onChange={handleInput} placeholder="Amount Received (₹)" style={{ width: '100%', padding: '14px', border: '1px solid #e0e0e0', borderRadius: '6px', outline: 'none' }} />
+              </div>
+              <div>
+                <input type="text" value={dueFees} readOnly placeholder="Due Fees (₹)" style={{ width: '100%', padding: '14px', border: '1px solid #e0e0e0', borderRadius: '6px', outline: 'none', background: '#f8f9fa' }} />
+              </div>
+              <div style={{ position: 'relative' }}>
+                <label style={{ position: 'absolute', top: '-8px', left: '10px', background: 'white', padding: '0 5px', fontSize: '12px', color: '#666' }}>Payment Mode</label>
+                <select name="paymentMode" value={formData.paymentMode} onChange={handleInput} style={{ width: '100%', padding: '14px', border: '1px solid #e0e0e0', borderRadius: '6px', outline: 'none', color: '#555', appearance: 'none', background: 'url("data:image/svg+xml;utf8,<svg fill=%27black%27 height=%2724%27 viewBox=%270 0 24 24%27 width=%2724%27 xmlns=%27http://www.w3.org/2000/svg%27><path d=%27M7 10l5 5 5-5z%27/><path d=%27M0 0h24v24H0z%27 fill=%27none%27/></svg>") no-repeat right 10px center' }}>
+                  <option value="" disabled>Select Payment Mode</option>
+                  <option>Cash</option>
+                  <option>Online</option>
+                  <option>Net Banking</option>
+                </select>
+              </div>
+              <div style={{ position: 'relative' }}>
+                <label style={{ position: 'absolute', top: '-8px', left: '10px', background: 'white', padding: '0 5px', fontSize: '12px', color: '#666' }}>Installment</label>
+                <select name="installment" value={formData.installment} onChange={handleInput} style={{ width: '100%', padding: '14px', border: '1px solid #e0e0e0', borderRadius: '6px', outline: 'none', color: '#555', appearance: 'none', background: 'url("data:image/svg+xml;utf8,<svg fill=%27black%27 height=%2724%27 viewBox=%270 0 24 24%27 width=%2724%27 xmlns=%27http://www.w3.org/2000/svg%27><path d=%27M7 10l5 5 5-5z%27/><path d=%27M0 0h24v24H0z%27 fill=%27none%27/></svg>") no-repeat right 10px center' }}>
+                  <option value="No">No</option>
+                  <option value="Yes">Yes</option>
+                </select>
+              </div>
+              <div style={{ gridColumn: '1 / -1' }}>
+                <input type="text" value={amountWords} readOnly placeholder="Amount Received In Words" style={{ width: '100%', padding: '14px', border: '1px solid #e0e0e0', borderRadius: '6px', outline: 'none', background: '#f8f9fa' }} />
+              </div>
+            </div>
+          </div>
         </div>
+      )}
+
+      <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '40px' }}>
+        {step > 1 && (
+          <button onClick={() => setStep(step - 1)} style={{ padding: '12px 24px', marginRight: '15px', background: '#f8f9fa', border: '1px solid #ddd', borderRadius: '6px', cursor: 'pointer', color: '#555', fontWeight: 'bold' }}>
+            Previous
+          </button>
+        )}
+        {step < 4 && (
+          <button onClick={() => setStep(step + 1)} style={{ padding: '12px 24px', background: '#8b5cf6', border: 'none', borderRadius: '6px', cursor: 'pointer', color: 'white', fontWeight: 'bold', boxShadow: '0 4px 6px rgba(139, 92, 246, 0.2)' }}>
+            Next Step
+          </button>
+        )}
+        {step === 4 && (
+          <button onClick={handleSubmit} disabled={loading} style={{ padding: '12px 24px', background: '#27ae60', border: 'none', borderRadius: '6px', cursor: 'pointer', color: 'white', fontWeight: 'bold', boxShadow: '0 4px 6px rgba(39, 174, 96, 0.2)' }}>
+            {loading ? 'Enrolling...' : 'Enroll Student'}
+          </button>
+        )}
       </div>
     </div>
   );
@@ -1229,6 +1578,90 @@ const DevicesPage = () => {
   );
 };
 
+
+const BirthdaysPage = () => {
+  const [users, setUsers] = useState([]);
+  
+  useEffect(() => {
+    api.get('/users').then(res => {
+      setUsers(res.data);
+    }).catch(err => console.error(err));
+  }, []);
+
+  const today = new Date();
+  
+  const upcomingBirthdays = users.filter(u => {
+    if (!u.dob) return false;
+    const dob = new Date(u.dob);
+    if (isNaN(dob)) return false;
+    
+    // Check if birthday is coming up in next 30 days
+    const thisYearBday = new Date(today.getFullYear(), dob.getMonth(), dob.getDate());
+    const nextYearBday = new Date(today.getFullYear() + 1, dob.getMonth(), dob.getDate());
+    
+    // Use whichever is closest in the future or today
+    let bday = thisYearBday;
+    if (thisYearBday < new Date(today.getFullYear(), today.getMonth(), today.getDate())) {
+       bday = nextYearBday;
+    }
+    
+    const diffTime = bday - new Date(today.getFullYear(), today.getMonth(), today.getDate());
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+    
+    u.daysUntil = diffDays;
+    u.ageTurning = bday.getFullYear() - dob.getFullYear();
+    return diffDays >= 0 && diffDays <= 30;
+  }).sort((a, b) => a.daysUntil - b.daysUntil);
+
+  return (
+    <div className="dashboard-card">
+      <div className="card-header">
+          <h2>🎂 Upcoming Birthdays (Next 30 Days)</h2>
+      </div>
+      <table className="dashboard-table">
+          <thead>
+              <tr>
+                  <th>Name</th>
+                  <th>Role</th>
+                  <th>Date of Birth</th>
+                  <th>Turning Age</th>
+                  <th>Countdown</th>
+                  <th>Actions</th>
+              </tr>
+          </thead>
+          <tbody>
+              {upcomingBirthdays.map((u, idx) => (
+                <tr key={u.id || idx}>
+                    <td>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                        <div className="avatar" style={{ background: u.daysUntil === 0 ? '#e74c3c' : '#f39c12' }}>{u.name.charAt(0)}</div> 
+                        {u.name}
+                      </div>
+                    </td>
+                    <td style={{ textTransform: 'capitalize' }}>{u.role}</td>
+                    <td>{new Date(u.dob).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}</td>
+                    <td>{u.ageTurning} years</td>
+                    <td>
+                        {u.daysUntil === 0 ? <span style={{ color: '#e74c3c', fontWeight: 'bold' }}>🎉 TODAY!</span> : 
+                         u.daysUntil === 1 ? <span style={{ color: '#f39c12', fontWeight: 'bold' }}>Tomorrow</span> : 
+                         `${u.daysUntil} days`}
+                    </td>
+                    <td>
+                        <button className="btn btn-primary" style={{ padding: '4px 10px', background: '#e74c3c', borderColor: '#e74c3c' }}>✉️ Send Wish</button>
+                    </td>
+                </tr>
+              ))}
+              {upcomingBirthdays.length === 0 && (
+                <tr>
+                  <td colSpan="6" style={{ textAlign: 'center', padding: '20px', color: '#888' }}>No upcoming birthdays found in the next 30 days.</td>
+                </tr>
+              )}
+          </tbody>
+      </table>
+    </div>
+  );
+};
+
 // --- MAIN APP ---
 function App() {
   const [token, setToken] = useState(localStorage.getItem('token'));
@@ -1252,6 +1685,7 @@ function App() {
             <Route path="/attendance" element={<ProtectedRoute><Layout logout={logout} user={user}><AttendancePage /></Layout></ProtectedRoute>} />
             <Route path="/admissions" element={<ProtectedRoute><Layout logout={logout} user={user}><AdmissionsPage /></Layout></ProtectedRoute>} />
             <Route path="/enroll-student" element={<ProtectedRoute><Layout logout={logout} user={user}><EnrollStudentPage /></Layout></ProtectedRoute>} />
+            <Route path="/birthdays" element={<ProtectedRoute><Layout logout={logout} user={user}><BirthdaysPage /></Layout></ProtectedRoute>} />
             <Route path="/teachers" element={<ProtectedRoute><Layout logout={logout} user={user}><TeachersPage /></Layout></ProtectedRoute>} />
             <Route path="/devices" element={<ProtectedRoute><Layout logout={logout} user={user}><DevicesPage /></Layout></ProtectedRoute>} />
             <Route path="/simulator" element={<ProtectedRoute><Layout logout={logout} user={user}><Simulator /></Layout></ProtectedRoute>} />
