@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -7,17 +8,24 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <style>
-        body { font-family: 'Inter', sans-serif; background-color: #f8fafc; }
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f8fafc;
+        }
     </style>
 </head>
+
 <body class="text-slate-800 p-8">
 
     <div class="max-w-4xl mx-auto bg-white rounded-2xl shadow-sm border border-slate-200 p-8">
         <h1 class="text-2xl font-bold text-violet-700 mb-6">Student Attendance Report</h1>
-        
+
         <div class="flex gap-4 mb-8">
-            <input type="number" id="search-id" class="flex-1 border border-slate-300 rounded-lg px-4 py-2 focus:outline-none focus:border-violet-600" placeholder="Enter Biometric Register ID">
-            <button onclick="fetchAttendance()" class="bg-violet-600 hover:bg-violet-700 text-white font-medium py-2 px-6 rounded-lg transition-colors">
+            <input type="number" id="search-id"
+                class="flex-1 border border-slate-300 rounded-lg px-4 py-2 focus:outline-none focus:border-violet-600"
+                placeholder="Enter Biometric Register ID">
+            <button onclick="fetchAttendance()"
+                class="bg-violet-600 hover:bg-violet-700 text-white font-medium py-2 px-6 rounded-lg transition-colors">
                 Search
             </button>
         </div>
@@ -26,10 +34,12 @@
 
         <div id="report-container" class="hidden">
             <!-- Student Info & Summary -->
-            <div class="bg-violet-50 rounded-xl p-6 mb-8 flex flex-col md:flex-row justify-between items-center border border-violet-100">
+            <div
+                class="bg-violet-50 rounded-xl p-6 mb-8 flex flex-col md:flex-row justify-between items-center border border-violet-100">
                 <div>
                     <h2 class="text-xl font-semibold text-slate-800" id="student-name">Student Name</h2>
-                    <p class="text-slate-500 text-sm">Biometric ID: <span id="student-id" class="font-medium text-slate-700"></span></p>
+                    <p class="text-slate-500 text-sm">Biometric ID: <span id="student-id"
+                            class="font-medium text-slate-700"></span></p>
                 </div>
                 <div class="flex gap-6 mt-4 md:mt-0 text-center">
                     <div class="bg-white px-4 py-3 rounded-lg shadow-sm border border-slate-100">
@@ -60,7 +70,7 @@
                     </tbody>
                 </table>
             </div>
-            
+
             <div id="no-records" class="hidden text-center text-slate-500 py-8">
                 No attendance records found for this ID.
             </div>
@@ -70,7 +80,7 @@
     <script>
         async function fetchAttendance() {
             const bioId = document.getElementById('search-id').value.trim();
-            if(!bioId) return alert('Please enter an ID');
+            if (!bioId) return alert('Please enter an ID');
 
             document.getElementById('loading').classList.remove('hidden');
             document.getElementById('report-container').classList.add('hidden');
@@ -79,8 +89,8 @@
             try {
                 const response = await fetch(`/api/attendance/student/${bioId}`);
                 const data = await response.json();
-                
-                if(data.error) throw new Error(data.error);
+
+                if (data.error) throw new Error(data.error);
 
                 // Populate Summary
                 document.getElementById('student-name').innerText = data.student.name;
@@ -91,8 +101,8 @@
                 // Populate Table
                 const tbody = document.getElementById('table-body');
                 tbody.innerHTML = '';
-                
-                if(data.records && data.records.length > 0) {
+
+                if (data.records && data.records.length > 0) {
                     data.records.forEach(r => {
                         const tr = document.createElement('tr');
                         tr.className = 'hover:bg-slate-50 transition-colors';
@@ -118,4 +128,5 @@
         }
     </script>
 </body>
+
 </html>

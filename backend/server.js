@@ -481,8 +481,7 @@ app.post(['/iclock/cdata', '/iclock/cdata.aspx'], async (req, res) => {
           userPhoto,
           timestamp: new Date(timestamp).toLocaleString('en-IN'),
           deviceSn: SN || 'NYU7260401606',
-          verifyMode,
-          photoUrl
+          verifyMode
         };
 
         // Emit the punch live to ALL frontend clients immediately
@@ -688,12 +687,41 @@ app.get('/api/admin/dashboard', async (req, res) => {
     const endOfToday = new Date();
     endOfToday.setHours(23, 59, 59, 999);
 
-    const punchedToday = await Punch.distinct('userId', {
+    const todaysPunches = await Punch.find({
       timestamp: { $gte: startOfToday, $lte: endOfToday }
+    }).sort({ timestamp: -1 });
+
+    const punchedTodayIds = [...new Set(todaysPunches.map(p => p.userId))];
+    const todayAttendCount = punchedTodayIds.length;
+    const todayAttendPercent = totalUsers > 0 ? Math.round((todayAttendCount / totalUsers) * 100) : 0;
+
+    const recentAttendance = [];
+    
+    // Group punches by user to find inTime and outTime
+    const punchesByUser = {};
+    todaysPunches.forEach(p => {
+      if (!punchesByUser[p.userId]) punchesByUser[p.userId] = [];
+      punchesByUser[p.userId].push(p);
     });
 
-    const todayAttendCount = punchedToday.length;
-    const todayAttendPercent = totalUsers > 0 ? Math.round((todayAttendCount / totalUsers) * 100) : 0;
+    for (const userId of Object.keys(punchesByUser)) {
+      const userPunches = punchesByUser[userId].sort((a, b) => a.timestamp - b.timestamp);
+      let user = await User.findOne({ fingerprint_id: String(userId) });
+      if (!user) user = await User.findOne({ id: parseInt(userId) || 0 });
+      
+      recentAttendance.push({
+        name: user ? user.name : `User ${userId}`,
+        role: user ? user.role : 'user',
+        photo: user ? user.photo : null,
+        inTime: userPunches[0].timestamp.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }),
+        outTime: userPunches.length > 1 ? userPunches[userPunches.length - 1].timestamp.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }) : '--:-- --',
+        status: 'Present',
+        latestTime: userPunches[userPunches.length - 1].timestamp
+      });
+    }
+
+    // Sort by latest punch descending
+    recentAttendance.sort((a, b) => b.latestTime - a.latestTime);
 
     res.json({
       stats: {
@@ -704,7 +732,7 @@ app.get('/api/admin/dashboard', async (req, res) => {
         activeTeachers: await User.countDocuments({ role: 'teacher' }),
         totalStudents: await User.countDocuments({ role: 'student' })
       },
-      recentAttendance: []
+      recentAttendance
     });
   } catch (err) {
     res.status(500).json({ error: err.message });
