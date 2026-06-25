@@ -1,0 +1,1147 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Student Enrollment Form</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <!-- SVG Icons support via Heroicons SVG string inlining or simple shapes -->
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f7f9fc;
+            background-image: linear-gradient(to right, rgba(226, 232, 240, 0.4) 1px, transparent 1px),
+                              linear-gradient(to bottom, rgba(226, 232, 240, 0.4) 1px, transparent 1px);
+            background-size: 24px 24px;
+        }
+
+        /* Hide number input spinner */
+        input[type="number"]::-webkit-inner-spin-button, 
+        input[type="number"]::-webkit-outer-spin-button { 
+            -webkit-appearance: none; 
+            margin: 0; 
+        }
+        input[type="number"] {
+            -moz-appearance: textfield;
+        }
+
+        .floating-input:focus ~ label,
+        .floating-input:not(:placeholder-shown) ~ label {
+            transform: translateY(-1.5rem) scale(0.85);
+            background-color: white;
+            padding: 0 0.25rem;
+            color: #7c3aed;
+        }
+        
+        /* Custom Toast */
+        #toast-container {
+            position: fixed;
+            bottom: 2rem;
+            right: 2rem;
+            z-index: 50;
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+        }
+        
+        .toast {
+            background-color: white;
+            border-left: 4px solid #7c3aed;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+            padding: 1rem;
+            border-radius: 0.375rem;
+            color: #374151;
+            transition: all 0.3s ease-in-out;
+            transform: translateX(100%);
+            opacity: 0;
+        }
+        
+        .toast.show {
+            transform: translateX(0);
+            opacity: 1;
+        }
+
+        .step-active {
+            border-color: #7c3aed;
+            color: #7c3aed;
+            font-weight: 600;
+        }
+        
+        .step-completed {
+            background-color: #7c3aed;
+            border-color: #7c3aed;
+            color: white;
+        }
+        
+        .step-inactive {
+            border-color: #cbd5e1;
+            color: #94a3b8;
+        }
+        
+        .form-section {
+            display: none;
+            animation: fadeIn 0.3s ease-in-out;
+        }
+        
+        .form-section.active {
+            display: block;
+        }
+        
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        /* Toggle switch */
+        .toggle-checkbox:checked {
+            right: 0;
+            border-color: #7c3aed;
+        }
+        .toggle-checkbox:checked + .toggle-label {
+            background-color: #7c3aed;
+        }
+
+        @media print {
+            body > *:not(#printable-receipt) {
+                display: none !important;
+            }
+            #printable-receipt {
+                display: block !important;
+                visibility: visible !important;
+            }
+            body {
+                background: white !important;
+            }
+        }
+    </style>
+</head>
+<body class="min-h-screen pb-12">
+
+    <!-- Top Navigation -->
+    <nav class="bg-white border-b border-slate-200 px-6 py-3 flex justify-between items-center sticky top-0 z-30 shadow-sm">
+        <div class="font-bold text-xl text-violet-600 tracking-tight flex items-center">
+            <svg class="w-6 h-6 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"></path></svg>
+            EduEnroll Pro
+        </div>
+        <div class="relative w-full max-w-md mx-4 hidden md:block">
+            <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                <svg class="h-5 w-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
+            </div>
+            <input type="text" class="block w-full pl-10 pr-3 py-2 border border-slate-200 rounded-lg text-sm bg-slate-50 focus:outline-none focus:border-violet-500 focus:ring-1 focus:ring-violet-500" placeholder="Search Students by Name & Contact Number...">
+        </div>
+        <div class="flex items-center space-x-4">
+            <div class="w-10 h-10 rounded-full bg-violet-700 text-white flex items-center justify-center font-bold text-sm shadow-sm ring-2 ring-violet-100 cursor-pointer">
+                DK
+            </div>
+        </div>
+    </nav>
+
+    <!-- Main Container -->
+    <main class="max-w-4xl mx-auto mt-8 px-4">
+        <div class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+            
+            <!-- Progress Stepper -->
+            <div class="border-b border-slate-100 bg-slate-50/50 px-8 py-6">
+                <div class="flex items-center justify-between relative max-w-2xl mx-auto">
+                    <div class="absolute left-0 top-1/2 transform -translate-y-1/2 w-full h-0.5 bg-slate-200 z-0"></div>
+                    <!-- Step 1 -->
+                    <div class="relative z-10 flex flex-col items-center cursor-pointer group" onclick="goToStep(1)">
+                        <div id="step1-indicator" class="w-10 h-10 rounded-full border-2 flex items-center justify-center bg-white step-active transition-all duration-300 group-hover:ring-4 ring-violet-50">
+                            1
+                        </div>
+                        <span class="mt-2 text-sm font-semibold text-slate-700 bg-slate-50 px-1 rounded transition-colors group-hover:text-violet-600">Basic Details</span>
+                    </div>
+                    <!-- Step 2 -->
+                    <div class="relative z-10 flex flex-col items-center cursor-pointer group" onclick="goToStep(2)">
+                        <div id="step2-indicator" class="w-10 h-10 rounded-full border-2 flex items-center justify-center bg-white step-inactive transition-all duration-300 group-hover:ring-4 ring-violet-50">
+                            2
+                        </div>
+                        <span class="mt-2 text-sm font-medium text-slate-500 bg-slate-50 px-1 rounded transition-colors group-hover:text-violet-600">Class Details</span>
+                    </div>
+                    <!-- Step 3 -->
+                    <div class="relative z-10 flex flex-col items-center cursor-pointer group" onclick="goToStep(3)">
+                        <div id="step3-indicator" class="w-10 h-10 rounded-full border-2 flex items-center justify-center bg-white step-inactive transition-all duration-300 group-hover:ring-4 ring-violet-50">
+                            3
+                        </div>
+                        <span class="mt-2 text-sm font-medium text-slate-500 bg-slate-50 px-1 rounded transition-colors group-hover:text-violet-600">Fees Details</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Form Content -->
+            <div class="p-8">
+                
+                <!-- STEP 1: Basic Details -->
+                <div id="step1-form" class="form-section active">
+                    <h2 class="text-xl font-semibold text-slate-800 mb-6 flex items-center"><span class="w-1.5 h-6 bg-violet-600 rounded-full mr-3"></span>Student Basic Details</h2>
+                    
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                        
+                        <!-- Name -->
+                        <div class="relative pt-2">
+                            <input type="text" id="student-name" class="floating-input w-full border border-slate-300 rounded-lg px-4 py-3 text-slate-800 focus:outline-none focus:border-violet-600 focus:ring-1 focus:ring-violet-600 transition-colors" placeholder=" ">
+                            <label for="student-name" class="absolute left-3 top-5 text-slate-500 transition-all pointer-events-none">Student Name <span class="text-red-500">*</span></label>
+                        </div>
+
+                        <!-- Aadhar -->
+                        <div class="relative pt-2">
+                            <input type="number" id="aadhar" oninput="this.value=this.value.slice(0,12)" class="floating-input w-full border border-slate-300 rounded-lg px-4 py-3 text-slate-800 focus:outline-none focus:border-violet-600 focus:ring-1 focus:ring-violet-600 transition-colors" placeholder=" ">
+                            <label for="aadhar" class="absolute left-3 top-5 text-slate-500 transition-all pointer-events-none">Aadhar Number</label>
+                        </div>
+
+                        <!-- Admission Date -->
+                        <div class="relative pt-2">
+                            <input type="date" id="admission-date" value="2026-06-22" class="floating-input w-full border border-slate-300 rounded-lg px-4 py-3 text-slate-800 focus:outline-none focus:border-violet-600 focus:ring-1 focus:ring-violet-600 transition-colors placeholder-transparent">
+                            <label for="admission-date" class="absolute left-3 -top-1 bg-white px-1 text-sm text-violet-600 transition-all pointer-events-none">Admission Date <span class="text-red-500">*</span></label>
+                        </div>
+
+                        <!-- Biometric Register ID -->
+                        <div class="relative pt-2">
+                            <input type="number" id="biometric-id" class="floating-input w-full border border-slate-300 rounded-lg px-4 py-3 text-slate-800 focus:outline-none focus:border-violet-600 focus:ring-1 focus:ring-violet-600 transition-colors" placeholder=" ">
+                            <label for="biometric-id" class="absolute left-3 top-5 text-slate-500 transition-all pointer-events-none">Biometric Register ID <span class="text-red-500">*</span></label>
+                        </div>
+
+                        <!-- Gender -->
+                        <div class="relative pt-2">
+                            <select id="gender" class="w-full border border-slate-300 rounded-lg px-4 py-3 text-slate-800 focus:outline-none focus:border-violet-600 focus:ring-1 focus:ring-violet-600 transition-colors bg-white">
+                                <option value="" disabled selected>Select Gender</option>
+                                <option value="Male">Male</option>
+                                <option value="Female">Female</option>
+                                <option value="Transgender">Transgender</option>
+                                <option value="Other">Other</option>
+                            </select>
+                            <label class="absolute left-3 -top-1 bg-white px-1 text-sm text-slate-500 transition-all pointer-events-none">Gender</label>
+                        </div>
+
+                        <!-- DOB -->
+                        <div class="relative pt-2">
+                            <input type="date" id="dob" class="w-full border border-slate-300 rounded-lg px-4 py-3 text-slate-800 focus:outline-none focus:border-violet-600 focus:ring-1 focus:ring-violet-600 transition-colors bg-white">
+                            <label class="absolute left-3 -top-1 bg-white px-1 text-sm text-slate-500 transition-all pointer-events-none">Date of Birth</label>
+                        </div>
+
+                        <!-- Email -->
+                        <div class="relative pt-2">
+                            <input type="email" id="email" class="floating-input w-full border border-slate-300 rounded-lg px-4 py-3 text-slate-800 focus:outline-none focus:border-violet-600 focus:ring-1 focus:ring-violet-600 transition-colors" placeholder=" ">
+                            <label for="email" class="absolute left-3 top-5 text-slate-500 transition-all pointer-events-none">Email Id</label>
+                        </div>
+
+                        <!-- Student Phone -->
+                        <div class="relative pt-2">
+                            <input type="number" id="student-phone" oninput="this.value=this.value.slice(0,10)" class="floating-input w-full border border-slate-300 rounded-lg px-4 py-3 text-slate-800 focus:outline-none focus:border-violet-600 focus:ring-1 focus:ring-violet-600 transition-colors" placeholder=" ">
+                            <label for="student-phone" class="absolute left-3 top-5 text-slate-500 transition-all pointer-events-none">Student Phone Number <span class="text-red-500">*</span></label>
+                        </div>
+
+                        <!-- Parent Phone -->
+                        <div class="relative pt-2">
+                            <input type="number" id="parent-phone" oninput="this.value=this.value.slice(0,10)" class="floating-input w-full border border-slate-300 rounded-lg px-4 py-3 text-slate-800 focus:outline-none focus:border-violet-600 focus:ring-1 focus:ring-violet-600 transition-colors" placeholder=" ">
+                            <label for="parent-phone" class="absolute left-3 top-5 text-slate-500 transition-all pointer-events-none">Parent Phone Number <span class="text-red-500">*</span></label>
+                        </div>
+
+                        <!-- 10th Marks -->
+                        <div class="relative pt-2 flex w-full">
+                            <span class="inline-flex items-center px-4 rounded-l-lg border border-r-0 border-slate-300 bg-slate-100 text-slate-500 font-semibold">%</span>
+                            <input type="number" id="marks-10th" oninput="if(this.value > 100) this.value = 100;" min="0" max="100" class="flex-1 min-w-0 w-full border border-slate-300 rounded-r-lg px-4 py-3 text-slate-800 focus:outline-none focus:border-violet-600 focus:ring-1 focus:ring-violet-600 transition-colors" placeholder="10th Marks">
+                        </div>
+
+                        <!-- Address -->
+                        <div class="relative pt-2 md:col-span-2">
+                            <input type="text" id="address" class="floating-input w-full border border-slate-300 rounded-lg px-4 py-3 text-slate-800 focus:outline-none focus:border-violet-600 focus:ring-1 focus:ring-violet-600 transition-colors" placeholder=" ">
+                            <label for="address" class="absolute left-3 top-5 text-slate-500 transition-all pointer-events-none">Full Address</label>
+                        </div>
+
+                        <!-- 12th Marks -->
+                        <div class="relative pt-2 flex w-full">
+                            <span class="inline-flex items-center px-4 rounded-l-lg border border-r-0 border-slate-300 bg-slate-100 text-slate-500 font-semibold">%</span>
+                            <input type="number" id="marks-12th" oninput="if(this.value > 100) this.value = 100;" min="0" max="100" class="flex-1 min-w-0 w-full border border-slate-300 rounded-r-lg px-4 py-3 text-slate-800 focus:outline-none focus:border-violet-600 focus:ring-1 focus:ring-violet-600 transition-colors" placeholder="12th Marks">
+                        </div>
+                    </div>
+                </div>
+
+                <!-- STEP 2: Class Details -->
+                <div id="step2-form" class="form-section">
+                    <h2 class="text-xl font-semibold text-slate-800 mb-6 flex items-center"><span class="w-1.5 h-6 bg-violet-600 rounded-full mr-3"></span>Class & Course Details</h2>
+                    
+                    <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
+                        <div>
+                            <label class="block text-sm font-medium text-slate-600 mb-1">Branch <span class="text-red-500">*</span></label>
+                            <select id="branch" class="w-full border border-slate-300 rounded-lg px-3 py-2 bg-white focus:outline-none focus:border-violet-600 focus:ring-1 focus:ring-violet-600">
+                                <option value="" disabled selected>Select Branch</option>
+                                <option value="Online">Online</option>
+                                <option value="Offline">Offline</option>
+                                <option value="Hybrid">Hybrid</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-slate-600 mb-1">Academic Year</label>
+                            <select id="year" class="w-full border border-slate-300 rounded-lg px-3 py-2 bg-white focus:outline-none focus:border-violet-600 focus:ring-1 focus:ring-violet-600">
+                                <option value="2026" selected>2026</option>
+                                <option value="2027">2027</option>
+                                <option value="2028">2028</option>
+                                <option value="2029">2029</option>
+                                <option value="2030">2030</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-slate-600 mb-1">Program</label>
+                            <select id="program" class="w-full border border-slate-300 rounded-lg px-3 py-2 bg-white focus:outline-none focus:border-violet-600 focus:ring-1 focus:ring-violet-600" onchange="updateCourseOptions(this.value)">
+                                <option value="" disabled selected>Select Program</option>
+                                <option value="11th and 12th Science">11th and 12th Science</option>
+                                <option value="Government Exams">Government Exams</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-slate-600 mb-1">Course Select <span class="text-red-500">*</span></label>
+                            <select id="course-select" class="w-full border border-slate-300 rounded-lg px-3 py-2 bg-white focus:outline-none focus:border-violet-600 focus:ring-1 focus:ring-violet-600" onchange="addCourse(this.value)">
+                                <option value="" disabled selected>Add a Course...</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <!-- Left Card -->
+                        <div class="border border-slate-200 rounded-xl bg-slate-50 overflow-hidden flex flex-col h-64">
+                            <div class="px-4 py-3 bg-white border-b border-slate-200 font-semibold text-slate-700 flex justify-between items-center">
+                                <span>Selected Courses</span>
+                                <span class="bg-violet-100 text-violet-700 text-xs py-1 px-2 rounded-full" id="course-count">0</span>
+                            </div>
+                            <div id="course-list" class="p-4 flex-1 space-y-3 overflow-y-auto">
+                                <div id="no-course" class="text-sm text-slate-400 text-center py-8 border-2 border-dashed border-slate-200 rounded-lg">
+                                    No courses selected yet. <br> Select from the dropdown above.
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Right Card -->
+                        <div class="border border-slate-200 rounded-xl bg-slate-50 overflow-hidden flex flex-col h-64">
+                            <div class="px-4 py-3 bg-white border-b border-slate-200 flex justify-between items-center">
+                                <span class="font-semibold text-slate-700">Course Subjects List</span>
+                                <div class="flex items-center">
+                                    <span class="text-xs text-slate-500 mr-2">Show</span>
+                                    <div class="relative inline-block w-10 mr-2 align-middle select-none transition duration-200 ease-in">
+                                        <input type="checkbox" name="toggle" id="subject-toggle" class="toggle-checkbox absolute block w-5 h-5 rounded-full bg-white border-4 appearance-none cursor-pointer" checked onchange="toggleSubjects()"/>
+                                        <label for="subject-toggle" class="toggle-label block overflow-hidden h-5 rounded-full bg-slate-300 cursor-pointer"></label>
+                                    </div>
+                                </div>
+                            </div>
+                            <div id="subject-list" class="p-4 flex-1 overflow-y-auto">
+                                <div class="text-sm text-slate-400 text-center py-8">
+                                    Add a course to see mapped subjects.
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Fee Option Checklist -->
+                    <div class="mt-6 flex items-center bg-violet-50 p-4 rounded-xl border border-violet-100 transition-all hover:border-violet-200">
+                        <input type="checkbox" id="add-subject-fee" class="w-5 h-5 text-violet-600 rounded border-violet-300 focus:ring-violet-500 cursor-pointer accent-violet-600" onchange="calculateFees()">
+                        <label for="add-subject-fee" class="ml-3 text-sm font-medium text-slate-700 cursor-pointer select-none">
+                            Add subject fee to the total course fee <span class="text-violet-600 font-bold bg-white px-2 py-0.5 rounded shadow-sm border border-violet-100 ml-1">+₹30 per subject</span>
+                        </label>
+                    </div>
+
+                </div>
+
+                <!-- STEP 3: Fees Details -->
+                <div id="step3-form" class="form-section">
+                    <h2 class="text-xl font-semibold text-slate-800 mb-6 flex items-center"><span class="w-1.5 h-6 bg-violet-600 rounded-full mr-3"></span>Fees Details</h2>
+                    
+                    <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
+                        <div>
+                            <label class="block text-sm font-medium text-slate-600 mb-1">Status Quota</label>
+                            <select class="w-full border border-slate-300 rounded-lg px-3 py-2 bg-white focus:outline-none focus:border-violet-600 focus:ring-1 focus:ring-violet-600">
+                                <option selected>Direct Admission</option>
+                                <option>Management Quota</option>
+                                <option>Merit Based</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-slate-600 mb-1">Segment</label>
+                            <select class="w-full border border-slate-300 rounded-lg px-3 py-2 bg-white focus:outline-none focus:border-violet-600 focus:ring-1 focus:ring-violet-600">
+                                <option>Regular</option>
+                                <option>Premium</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-slate-600 mb-1">School/College Name</label>
+                            <input type="text" class="w-full border border-slate-300 rounded-lg px-3 py-2 focus:outline-none focus:border-violet-600 focus:ring-1 focus:ring-violet-600" placeholder="Previous Institute">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-slate-600 mb-1">Last Coaching Classes</label>
+                            <input type="text" class="w-full border border-slate-300 rounded-lg px-3 py-2 focus:outline-none focus:border-violet-600 focus:ring-1 focus:ring-violet-600" placeholder="If any">
+                        </div>
+                    </div>
+
+                    <div class="bg-white border border-slate-200 rounded-xl p-6 shadow-sm relative overflow-hidden">
+                        <div class="absolute top-0 right-0 w-32 h-32 bg-violet-50 rounded-full -mr-16 -mt-16 z-0"></div>
+                        <h3 class="text-sm font-bold text-slate-500 uppercase tracking-wider mb-6 relative z-10">Dynamic Fee Calculator Engine</h3>
+                        
+                        <div class="grid grid-cols-1 md:grid-cols-3 gap-6 relative z-10">
+                            <!-- Course Fee -->
+                            <div>
+                                <label class="block text-sm font-medium text-slate-700 mb-2">Base Course Fee (₹)</label>
+                                <input type="number" id="base-fee" value="50000" class="w-full border border-slate-300 rounded-lg px-4 py-3 bg-white font-semibold text-lg text-slate-800 focus:outline-none focus:border-violet-500 focus:ring-1 focus:ring-violet-500 transition-colors" oninput="calculateFees()">
+                            </div>
+                            
+                            <!-- Discount Group -->
+                            <div>
+                                <label class="block text-sm font-medium text-slate-700 mb-2">Discount (Amt & %)</label>
+                                <div class="flex shadow-sm rounded-lg">
+                                    <div class="relative flex-1">
+                                        <span class="absolute left-3 top-3.5 text-slate-400 font-medium">₹</span>
+                                        <input type="number" id="discount-amt" value="0" class="w-full border border-slate-300 rounded-l-lg pl-8 pr-3 py-3 bg-white focus:outline-none focus:border-violet-500 focus:ring-1 focus:ring-violet-500 transition-colors" oninput="handleDiscountAmt()">
+                                    </div>
+                                    <div class="relative w-24">
+                                        <input type="number" id="discount-pct" value="0" class="w-full border-y border-r border-slate-300 rounded-r-lg pr-8 pl-3 py-3 bg-slate-50 focus:outline-none focus:border-violet-500 focus:ring-1 focus:ring-violet-500 transition-colors" oninput="handleDiscountPct()">
+                                        <span class="absolute right-3 top-3.5 text-slate-500 font-medium">%</span>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Net Fees -->
+                            <div>
+                                <label class="block text-sm font-medium text-slate-700 mb-2">Net Fees (₹)</label>
+                                <div class="relative">
+                                    <input type="text" id="net-fee" value="50,000" readonly class="w-full border-2 border-violet-300 rounded-lg px-4 py-3 bg-violet-50 font-bold text-xl text-violet-800 shadow-inner focus:outline-none">
+                                    <div class="absolute right-3 top-3.5 text-violet-500">
+                                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="col-span-full border-t border-slate-200 mt-4 pt-6"></div>
+
+                            <!-- Payment Details Section -->
+                            <div class="col-span-full">
+                                <h3 class="text-lg font-semibold text-slate-800 mb-4">Payment Details</h3>
+                                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                                    <!-- Amount Received -->
+                                    <div>
+                                        <label class="block text-sm font-medium text-slate-700 mb-2">Amount Received (₹)</label>
+                                        <input type="number" id="amount-received" value="0" class="w-full border border-slate-300 rounded-lg px-4 py-3 bg-white focus:outline-none focus:border-violet-500 focus:ring-1 focus:ring-violet-500 transition-colors" oninput="handlePaymentChange()">
+                                    </div>
+
+                                    <!-- Due Fees -->
+                                    <div>
+                                        <label class="block text-sm font-medium text-slate-700 mb-2">Due Fees (₹)</label>
+                                        <input type="text" id="due-fees" value="50,000" readonly class="w-full border border-slate-300 rounded-lg px-4 py-3 bg-slate-50 text-slate-700 font-bold focus:outline-none">
+                                    </div>
+
+                                    <!-- Payment Mode -->
+                                    <div>
+                                        <label class="block text-sm font-medium text-slate-700 mb-2">Payment Mode</label>
+                                        <select id="payment-mode" class="w-full border border-slate-300 rounded-lg px-4 py-3 bg-white focus:outline-none focus:border-violet-500 focus:ring-1 focus:ring-violet-500 transition-colors">
+                                            <option value="Cash">Cash</option>
+                                            <option value="Online">Online</option>
+                                            <option value="Net Banking">Net Banking</option>
+                                        </select>
+                                    </div>
+
+                                    <!-- Installment -->
+                                    <div>
+                                        <label class="block text-sm font-medium text-slate-700 mb-2">Installment (Yes/No)</label>
+                                        <select id="installment-opt" class="w-full border border-slate-300 rounded-lg px-4 py-3 bg-white focus:outline-none focus:border-violet-500 focus:ring-1 focus:ring-violet-500 transition-colors">
+                                            <option value="No">No</option>
+                                            <option value="Yes">Yes</option>
+                                        </select>
+                                    </div>
+
+                                    <!-- Amount Received In Words -->
+                                    <div class="col-span-full lg:col-span-2">
+                                        <label class="block text-sm font-medium text-slate-700 mb-2">Amount Received (In Words)</label>
+                                        <input type="text" id="amount-received-words" value="Zero" readonly class="w-full border border-slate-300 rounded-lg px-4 py-3 bg-slate-50 text-slate-700 focus:outline-none italic">
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+
+            <!-- Footer Navigation -->
+            <div class="bg-slate-50/80 px-8 py-5 border-t border-slate-200 flex justify-between items-center">
+                <button id="btn-prev" class="px-6 py-2.5 rounded-xl font-medium text-slate-600 bg-white border border-slate-300 hover:bg-slate-100 hover:text-slate-900 transition-all opacity-50 cursor-not-allowed" disabled onclick="prevStep()">
+                    Previous
+                </button>
+                <button id="btn-next" class="px-6 py-2.5 rounded-xl font-medium text-white bg-violet-600 hover:bg-violet-700 hover:shadow-md hover:shadow-violet-200 transition-all flex items-center" onclick="nextStep()">
+                    <span id="btn-next-text">Next Step</span>
+                    <svg id="btn-next-icon" class="w-5 h-5 ml-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3"></path></svg>
+                </button>
+            </div>
+        </div>
+    </main>
+
+    <!-- Receipt Modal -->
+    <div id="receipt-modal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center hidden opacity-0 transition-opacity duration-300">
+        <div class="bg-white rounded-2xl shadow-2xl w-full max-w-md mx-4 overflow-hidden transform translate-y-8 transition-transform duration-300" id="receipt-card">
+            <div class="bg-violet-600 p-8 text-center text-white relative">
+                <button onclick="closeModal()" class="absolute top-4 right-4 text-violet-300 hover:text-white transition-colors">
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+                </button>
+                <div class="w-20 h-20 bg-white rounded-full mx-auto flex items-center justify-center mb-4 shadow-lg">
+                    <svg class="w-10 h-10 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7"></path></svg>
+                </div>
+                <h2 class="text-2xl font-bold tracking-tight">Enrollment Success</h2>
+                <p class="text-violet-200 text-sm mt-1">Invoice receipt generated</p>
+            </div>
+            <div class="p-8">
+                <div class="space-y-4">
+                    <div class="flex justify-between border-b border-dashed border-slate-200 pb-3">
+                        <span class="text-slate-500 text-sm">Student Name</span>
+                        <span class="font-semibold text-slate-800" id="receipt-name">-</span>
+                    </div>
+                    <div class="flex justify-between border-b border-dashed border-slate-200 pb-3">
+                        <span class="text-slate-500 text-sm">Branch</span>
+                        <span class="font-medium text-slate-800" id="receipt-branch">-</span>
+                    </div>
+                    <div class="flex justify-between border-b border-dashed border-slate-200 pb-3">
+                        <span class="text-slate-500 text-sm">Enrolled Courses</span>
+                        <span class="font-medium text-slate-800 text-right max-w-[60%]" id="receipt-courses">-</span>
+                    </div>
+                    <div class="flex justify-between bg-violet-50 p-4 rounded-xl border border-violet-100 mt-6 items-center">
+                        <span class="text-violet-800 font-medium">Net Fees Paid</span>
+                        <span class="font-bold text-violet-700 text-2xl" id="receipt-fee">₹0</span>
+                    </div>
+                </div>
+                <div class="flex gap-4 mt-8">
+                    <button onclick="printReceipt()" class="w-full py-3.5 bg-violet-100 text-violet-700 rounded-xl font-medium hover:bg-violet-200 transition-colors shadow-sm">
+                        Print Receipt
+                    </button>
+                    <button onclick="closeModal()" class="w-full py-3.5 bg-slate-900 text-white rounded-xl font-medium hover:bg-slate-800 transition-colors shadow-md">
+                        Done
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast Container -->
+    <div id="toast-container"></div>
+
+    <!-- Printable Receipt Section -->
+    <div id="printable-receipt" class="hidden p-4 text-black text-sm" style="font-family: 'Inter', sans-serif;">
+        <!-- Student Copy -->
+        <div class="mb-4 text-center font-semibold text-xs">Student's Copy</div>
+        <div class="border border-slate-300 p-4">
+            <!-- Header -->
+            <div class="flex justify-between items-start mb-4">
+                <div class="flex flex-1 pr-4">
+                    <div class="w-16 h-16 border border-slate-200 bg-slate-50 mr-4 flex items-center justify-center text-xs text-slate-400">
+                        <img src="/logo.png" alt="Logo" class="max-w-full max-h-full" onerror="this.style.display='none'">
+                    </div>
+                    <div>
+                        <div class="font-bold text-base">BK GROUP OF EDUCATION</div>
+                        <div class="text-xs text-slate-600 mt-1">2nd floor, Gajanan Plaza, Gharpure Ghat Road,<br>Ashok Stambh, Nashik-422001</div>
+                        <div class="text-xs text-slate-600 mt-1">Email : bkgroupofeducation1@gmail.com<br>Contact No. : 8888301363</div>
+                    </div>
+                </div>
+                <div class="w-[40%] border-l-2 border-slate-800 pl-4">
+                    <div class="font-bold text-base" id="print-student-name">Student Name</div>
+                    <div class="text-xs text-slate-600 mt-1">Address : <span id="print-address"></span></div>
+                    <div class="text-xs text-slate-600">Email : <span id="print-email"></span></div>
+                    <div class="text-xs text-slate-600">Contact No. : <span id="print-contact"></span></div>
+                </div>
+            </div>
+
+            <!-- Title -->
+            <div class="border-y-2 border-slate-800 py-1 text-center font-bold text-sm tracking-widest mb-2">
+                FEES RECEIPT
+            </div>
+
+            <!-- Meta -->
+            <div class="flex justify-between font-bold text-xs mb-2">
+                <div>Receipt Date : <span id="print-date"></span></div>
+                <div>Receipt No. : <span id="print-receipt-no">NA</span></div>
+            </div>
+
+            <!-- Grid -->
+            <div class="border-y border-slate-300 py-2 text-xs mb-2 space-y-2">
+                <div><span class="font-bold">Courses :</span> <span id="print-courses"></span></div>
+                <div><span class="font-bold">Amount received :</span> ₹ <span id="print-amount"></span></div>
+                <div><span class="font-bold">Amount received (in words) :</span> <span id="print-amount-words"></span></div>
+                
+                <div class="flex border-t border-slate-200 mt-2 pt-2">
+                    <div class="flex-1 space-y-2">
+                        <div><span class="font-bold">Payment mode :</span> <span id="print-payment-mode">Cash</span></div>
+                        <div><span class="font-bold">Total Fees :</span> ₹ <span id="print-total-fees">NA</span></div>
+                        <div><span class="font-bold">Installment (Yes/No) :</span> <span id="print-installment">NA</span></div>
+                        <div><span class="font-bold">Due Fees :</span> ₹ <span id="print-due-date"></span></div>
+                    </div>
+                    <div class="flex-1 space-y-2">
+                        <div><span class="font-bold">Cheque No. :</span> <span id="print-cheque-no">NA</span></div>
+                        <div><span class="font-bold">Bank Name :</span> <span id="print-bank-name">NA</span></div>
+                        <div><span class="font-bold">IFSC Code :</span> <span id="print-ifsc">NA</span></div>
+                        <div><span class="font-bold">Due Fees :</span> ₹ <span id="print-due-fees">NA</span></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Terms -->
+            <div class="text-[10px]">
+                <div class="font-bold mb-1 text-xs">Terms & Conditions :</div>
+                <ol class="list-decimal pl-4 space-y-0.5 text-slate-600">
+                    <li>All above mentioned Amount once paid are non refundable in any case whatsoever.</li>
+                    <li>Late payment will attract extra charges.</li>
+                    <li>Fees are non-transferable to another student/course.</li>
+                </ol>
+            </div>
+        </div>
+
+        <!-- Cut Line -->
+        <div class="relative text-center my-6">
+            <div class="absolute inset-0 flex items-center">
+                <div class="w-full border-t border-dashed border-slate-400"></div>
+            </div>
+            <div class="relative inline-block bg-white px-4 text-xs text-slate-500 font-medium">
+                ✂ Fold or Cut along this line
+            </div>
+        </div>
+
+        <!-- Office Copy -->
+        <div class="mb-4 text-center font-semibold text-xs">Office Copy</div>
+        <div class="border border-slate-300 p-4">
+            <!-- Header -->
+            <div class="flex justify-between items-start mb-4">
+                <div class="flex flex-1 pr-4">
+                    <div class="w-16 h-16 border border-slate-200 bg-slate-50 mr-4 flex items-center justify-center text-xs text-slate-400">
+                        <img src="/logo.png" alt="Logo" class="max-w-full max-h-full" onerror="this.style.display='none'">
+                    </div>
+                    <div>
+                        <div class="font-bold text-base">BK GROUP OF EDUCATION</div>
+                        <div class="text-xs text-slate-600 mt-1">2nd floor, Gajanan Plaza, Gharpure Ghat Road,<br>Ashok Stambh, Nashik-422001</div>
+                        <div class="text-xs text-slate-600 mt-1">Email : bkgroupofeducation1@gmail.com<br>Contact No. : 8888301363</div>
+                    </div>
+                </div>
+                <div class="w-[40%] border-l-2 border-slate-800 pl-4">
+                    <div class="font-bold text-base" id="print-student-name-2">Student Name</div>
+                    <div class="text-xs text-slate-600 mt-1">Address : <span id="print-address-2"></span></div>
+                    <div class="text-xs text-slate-600">Email : <span id="print-email-2"></span></div>
+                    <div class="text-xs text-slate-600">Contact No. : <span id="print-contact-2"></span></div>
+                </div>
+            </div>
+
+            <!-- Title -->
+            <div class="border-y-2 border-slate-800 py-1 text-center font-bold text-sm tracking-widest mb-2">
+                FEES RECEIPT
+            </div>
+
+            <!-- Meta -->
+            <div class="flex justify-between font-bold text-xs mb-2">
+                <div>Receipt Date : <span id="print-date-2"></span></div>
+                <div>Receipt No. : <span id="print-receipt-no-2">NA</span></div>
+            </div>
+
+            <!-- Grid -->
+            <div class="border-y border-slate-300 py-2 text-xs mb-2 space-y-2">
+                <div><span class="font-bold">Courses :</span> <span id="print-courses-2"></span></div>
+                <div><span class="font-bold">Amount received :</span> ₹ <span id="print-amount-2"></span></div>
+                <div><span class="font-bold">Amount received (in words) :</span> <span id="print-amount-words-2"></span></div>
+                
+                <div class="flex border-t border-slate-200 mt-2 pt-2">
+                    <div class="flex-1 space-y-2">
+                        <div><span class="font-bold">Payment mode :</span> <span id="print-payment-mode-2">Cash</span></div>
+                        <div><span class="font-bold">Total Fees :</span> ₹ <span id="print-total-fees-2">NA</span></div>
+                        <div><span class="font-bold">Installment (Yes/No) :</span> <span id="print-installment-2">NA</span></div>
+                        <div><span class="font-bold">Due Fees :</span> ₹ <span id="print-due-date-2"></span></div>
+                    </div>
+                    <div class="flex-1 space-y-2">
+                        <div><span class="font-bold">Cheque No. :</span> <span id="print-cheque-no-2">NA</span></div>
+                        <div><span class="font-bold">Bank Name :</span> <span id="print-bank-name-2">NA</span></div>
+                        <div><span class="font-bold">IFSC Code :</span> <span id="print-ifsc-2">NA</span></div>
+                        <div><span class="font-bold">Due Fees :</span> ₹ <span id="print-due-fees-2">NA</span></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Terms -->
+            <div class="text-[10px]">
+                <div class="font-bold mb-1 text-xs">Terms & Conditions :</div>
+                <ol class="list-decimal pl-4 space-y-0.5 text-slate-600">
+                    <li>All above mentioned Amount once paid are non refundable in any case whatsoever.</li>
+                    <li>Late payment will attract extra charges.</li>
+                    <li>Fees are non-transferable to another student/course.</li>
+                </ol>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        function numberToWords(num) {
+            const a = ['','One ','Two ','Three ','Four ', 'Five ','Six ','Seven ','Eight ','Nine ','Ten ','Eleven ','Twelve ','Thirteen ','Fourteen ','Fifteen ','Sixteen ','Seventeen ','Eighteen ','Nineteen '];
+            const b = ['', '', 'Twenty','Thirty','Forty','Fifty', 'Sixty','Seventy','Eighty','Ninety'];
+            if ((num = num.toString()).length > 9) return 'overflow';
+            let n = ('000000000' + num).substr(-9).match(/^(\d{2})(\d{2})(\d{2})(\d{1})(\d{2})$/);
+            if (!n) return 'Zero'; 
+            let str = '';
+            str += (n[1] != 0) ? (a[Number(n[1])] || b[n[1][0]] + ' ' + a[n[1][1]]) + 'Crore ' : '';
+            str += (n[2] != 0) ? (a[Number(n[2])] || b[n[2][0]] + ' ' + a[n[2][1]]) + 'Lakh ' : '';
+            str += (n[3] != 0) ? (a[Number(n[3])] || b[n[3][0]] + ' ' + a[n[3][1]]) + 'Thousand ' : '';
+            str += (n[4] != 0) ? (a[Number(n[4])] || b[n[4][0]] + ' ' + a[n[4][1]]) + 'Hundred ' : '';
+            str += (n[5] != 0) ? ((str != '') ? 'and ' : '') + (a[Number(n[5])] || b[n[5][0]] + ' ' + a[n[5][1]]) : '';
+            return (str.trim() + ' Rupees Only').trim();
+        }
+
+        function printReceipt() {
+            window.print();
+        }
+        let currentStep = 1;
+        let selectedCourses = [];
+        const subjectMap = {
+            "11th Science": ["Physics", "Chemistry", "Mathematics", "Biology"],
+            "12th Science": ["Physics", "Chemistry", "Mathematics", "Biology"],
+            "MHT CET": ["Physics", "Chemistry", "Mathematics", "Biology"],
+            "UPSC": ["History", "Geography", "Polity", "Current Affairs"],
+            "MPSC": ["Maharashtra History", "Geography", "Polity", "Current Affairs"],
+            "Banking": ["Quantitative Aptitude", "Reasoning", "English", "General Awareness"],
+            "Police": ["General Knowledge", "Reasoning", "Physical Training", "Law"],
+            "TET / TAIT": ["Child Development", "Pedagogy", "Language", "Mathematics"]
+        };
+
+        const programCourses = {
+            "11th and 12th Science": ["11th Science", "12th Science", "MHT CET"],
+            "Government Exams": ["UPSC", "MPSC", "Banking", "Police", "TET / TAIT"]
+        };
+
+        function updateCourseOptions(program) {
+            const courseSelect = document.getElementById('course-select');
+            courseSelect.innerHTML = '<option value="" disabled selected>Add a Course...</option>';
+            
+            if (program && programCourses[program]) {
+                programCourses[program].forEach(course => {
+                    const option = document.createElement('option');
+                    option.value = course;
+                    option.textContent = course;
+                    courseSelect.appendChild(option);
+                });
+            }
+        }
+
+        function showToast(message) {
+            const container = document.getElementById('toast-container');
+            const toast = document.createElement('div');
+            toast.className = 'toast flex items-start';
+            toast.innerHTML = `
+                <svg class="w-5 h-5 text-violet-600 mr-2 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                <span class="font-medium text-sm">${message}</span>
+            `;
+            container.appendChild(toast);
+            
+            // Trigger animation
+            setTimeout(() => toast.classList.add('show'), 10);
+            
+            setTimeout(() => {
+                toast.classList.remove('show');
+                setTimeout(() => toast.remove(), 300);
+            }, 3000);
+        }
+
+        function updateUI() {
+            // Update Forms
+            document.querySelectorAll('.form-section').forEach((el, index) => {
+                el.classList.toggle('active', index + 1 === currentStep);
+            });
+
+            // Update Stepper
+            for (let i = 1; i <= 3; i++) {
+                const indicator = document.getElementById(`step${i}-indicator`);
+                indicator.className = 'w-10 h-10 rounded-full border-2 flex items-center justify-center transition-colors duration-300';
+                
+                if (i < currentStep) {
+                    indicator.classList.add('step-completed');
+                    indicator.innerHTML = `<svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7"></path></svg>`;
+                    indicator.nextElementSibling.classList.replace('text-slate-700', 'text-slate-500');
+                    indicator.nextElementSibling.classList.remove('font-semibold');
+                    indicator.nextElementSibling.classList.add('font-medium');
+                } else if (i === currentStep) {
+                    indicator.classList.add('step-active', 'bg-white');
+                    indicator.innerHTML = i;
+                    indicator.nextElementSibling.classList.replace('text-slate-500', 'text-slate-700');
+                    indicator.nextElementSibling.classList.remove('font-medium');
+                    indicator.nextElementSibling.classList.add('font-semibold');
+                } else {
+                    indicator.classList.add('step-inactive', 'bg-white');
+                    indicator.innerHTML = i;
+                    indicator.nextElementSibling.classList.replace('text-slate-700', 'text-slate-500');
+                    indicator.nextElementSibling.classList.remove('font-semibold');
+                    indicator.nextElementSibling.classList.add('font-medium');
+                }
+            }
+
+            // Update Buttons
+            const btnPrev = document.getElementById('btn-prev');
+            const btnNext = document.getElementById('btn-next');
+            const nextText = document.getElementById('btn-next-text');
+            const nextIcon = document.getElementById('btn-next-icon');
+
+            if (currentStep === 1) {
+                btnPrev.disabled = true;
+                btnPrev.classList.replace('border-violet-600', 'border-slate-300');
+                btnPrev.classList.replace('text-violet-600', 'text-slate-600');
+                btnPrev.classList.replace('hover:bg-violet-50', 'hover:bg-slate-100');
+                btnPrev.classList.add('opacity-50', 'cursor-not-allowed');
+            } else {
+                btnPrev.disabled = false;
+                btnPrev.classList.replace('border-slate-300', 'border-violet-600');
+                btnPrev.classList.replace('text-slate-600', 'text-violet-600');
+                btnPrev.classList.replace('hover:bg-slate-100', 'hover:bg-violet-50');
+                btnPrev.classList.remove('opacity-50', 'cursor-not-allowed');
+            }
+
+            if (currentStep === 3) {
+                nextText.innerText = 'Save Details';
+                nextIcon.outerHTML = `<svg id="btn-next-icon" class="w-5 h-5 ml-2 text-white" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"></path></svg>`;
+            } else {
+                nextText.innerText = 'Next Step';
+                nextIcon.outerHTML = `<svg id="btn-next-icon" class="w-5 h-5 ml-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3"></path></svg>`;
+            }
+        }
+
+        function validateStep1() {
+            const name = document.getElementById('student-name').value.trim();
+            if (!name) {
+                showToast("Student Name is mandatory!");
+                return false;
+            }
+            
+            const aadhar = document.getElementById('aadhar').value.trim();
+            if (aadhar && aadhar.length !== 12) {
+                showToast("Aadhar Number must be exactly 12 digits!");
+                return false;
+            }
+            
+            const studentPhone = document.getElementById('student-phone').value.trim();
+            const parentPhone = document.getElementById('parent-phone').value.trim();
+            
+            if (!studentPhone || !parentPhone) {
+                showToast("Both Student and Parent Phone numbers are mandatory!");
+                return false;
+            }
+
+            if (studentPhone.length !== 10 || parentPhone.length !== 10) {
+                showToast("Both Phone numbers must be exactly 10 digits!");
+                return false;
+            }
+            
+            if (studentPhone === parentPhone) {
+                showToast("Student and Parent Phone numbers cannot be the same!");
+                return false;
+            }
+
+            const marks10 = document.getElementById('marks-10th').value.trim();
+            const marks12 = document.getElementById('marks-12th').value.trim();
+
+            if (!marks10) {
+                if (marks12) {
+                    showToast("If providing 12th Marks, 10th Marks is also mandatory!");
+                } else {
+                    showToast("10th Marks is mandatory!");
+                }
+                return false;
+            }
+
+            const biometricId = document.getElementById('biometric-id').value.trim();
+            if (!biometricId) {
+                showToast("Biometric Register ID is mandatory!");
+                return false;
+            }
+            
+            return true;
+        }
+
+        function goToStep(targetStep) {
+            if (targetStep === currentStep) return;
+            
+            if (targetStep < currentStep) {
+                currentStep = targetStep;
+                updateUI();
+                return;
+            }
+            
+            if (currentStep < 2 && targetStep >= 2) {
+                if (!validateStep1()) return;
+            }
+            
+            if (currentStep < 3 && targetStep === 3) {
+                if (!validateStep2()) {
+                    if (currentStep === 1) {
+                        currentStep = 2;
+                        updateUI();
+                    }
+                    return;
+                }
+            }
+            
+            currentStep = targetStep;
+            updateUI();
+        }
+
+        function validateStep2() {
+            const branch = document.getElementById('branch').value;
+            if (!branch) {
+                showToast("Please select a Branch!");
+                return false;
+            }
+            if (selectedCourses.length === 0) {
+                showToast("Please select at least one Course!");
+                return false;
+            }
+            return true;
+        }
+
+        function nextStep() {
+            if (currentStep === 1 && !validateStep1()) return;
+            if (currentStep === 2 && !validateStep2()) return;
+
+            if (currentStep === 3) {
+                if (!validateStep1() || !validateStep2()) {
+                    showToast("Please fill all required fields in previous steps before saving!");
+                    return;
+                }
+                showReceipt();
+                return;
+            }
+
+            currentStep++;
+            updateUI();
+            showToast(`Moved to Step ${currentStep}`);
+        }
+
+        function prevStep() {
+            if (currentStep > 1) {
+                currentStep--;
+                updateUI();
+            }
+        }
+
+        // --- STEP 2 LOGIC ---
+        function addCourse(course) {
+            if (!course || selectedCourses.includes(course)) return;
+            selectedCourses.push(course);
+            renderCourses();
+            document.getElementById('course-select').value = ""; // Reset
+            showToast(`Added ${course}`);
+            calculateFees();
+        }
+
+        function removeCourse(course) {
+            selectedCourses = selectedCourses.filter(c => c !== course);
+            renderCourses();
+            showToast(`Removed ${course}`);
+            calculateFees();
+        }
+        
+        function toggleSubjects() {
+            const list = document.getElementById('subject-list');
+            const show = document.getElementById('subject-toggle').checked;
+            if (show) {
+                list.style.display = 'block';
+            } else {
+                list.style.display = 'none';
+            }
+        }
+
+        function renderCourses() {
+            const list = document.getElementById('course-list');
+            const subList = document.getElementById('subject-list');
+            
+            document.getElementById('course-count').innerText = selectedCourses.length;
+            
+            if (selectedCourses.length === 0) {
+                list.innerHTML = `<div id="no-course" class="text-sm text-slate-400 text-center py-8 border-2 border-dashed border-slate-200 rounded-lg">No courses selected yet. <br> Select from the dropdown above.</div>`;
+                subList.innerHTML = `<div class="text-sm text-slate-400 text-center py-8">Add a course to see mapped subjects.</div>`;
+                return;
+            }
+
+            let html = '';
+            let subHtml = '';
+            
+            selectedCourses.forEach(c => {
+                html += `
+                <div class="flex justify-between items-center bg-white p-3.5 rounded-lg border border-slate-200 shadow-sm transition-all hover:border-violet-300">
+                    <div class="flex items-center">
+                        <span class="bg-violet-100 text-violet-700 text-xs font-bold px-2 py-1 rounded mr-3">2026</span>
+                        <span class="text-sm font-medium text-slate-700">${c}</span>
+                    </div>
+                    <button onclick="removeCourse('${c}')" class="text-red-500 hover:bg-red-50 p-1.5 rounded-md transition-colors" title="Remove course">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
+                    </button>
+                </div>`;
+
+                // Subjects
+                const subjects = subjectMap[c] || [];
+                subjects.forEach(s => {
+                    subHtml += `
+                    <div class="text-sm text-slate-600 py-2.5 border-b border-slate-100 flex items-center before:content-[''] before:w-1.5 before:h-1.5 before:bg-violet-400 before:rounded-full before:mr-2.5 ml-1">
+                        ${s} <span class="text-xs text-slate-400 ml-2">(${c})</span>
+                    </div>`;
+                });
+            });
+
+            list.innerHTML = html;
+            subList.innerHTML = `<div class="space-y-1">${subHtml}</div>`;
+        }
+
+        // --- STEP 3 LOGIC (Fee Engine) ---
+        function handleDiscountAmt() {
+            let base = parseFloat(document.getElementById('base-fee').value) || 0;
+            let amt = parseFloat(document.getElementById('discount-amt').value) || 0;
+            if (base > 0) {
+                let pct = (amt / base) * 100;
+                document.getElementById('discount-pct').value = pct.toFixed(2);
+            }
+            calculateFees();
+        }
+
+        function handleDiscountPct() {
+            let base = parseFloat(document.getElementById('base-fee').value) || 0;
+            let pct = parseFloat(document.getElementById('discount-pct').value) || 0;
+            let amt = (base * pct) / 100;
+            document.getElementById('discount-amt').value = Math.round(amt);
+            calculateFees();
+        }
+
+        function calculateFees() {
+            let base = parseFloat(document.getElementById('base-fee').value) || 0;
+            let disAmt = parseFloat(document.getElementById('discount-amt').value) || 0;
+            
+            let extraFee = 0;
+            if (document.getElementById('add-subject-fee').checked) {
+                let totalSubjects = 0;
+                selectedCourses.forEach(c => totalSubjects += (subjectMap[c] ? subjectMap[c].length : 0));
+                extraFee = totalSubjects * 30;
+            }
+
+            let net = base - disAmt + extraFee;
+            document.getElementById('net-fee').value = Math.max(0, net).toLocaleString('en-IN');
+            if (typeof handlePaymentChange === 'function') handlePaymentChange();
+        }
+
+        function handlePaymentChange() {
+            let netStr = document.getElementById('net-fee').value.replace(/,/g, '');
+            let net = parseFloat(netStr) || 0;
+            let received = parseFloat(document.getElementById('amount-received').value) || 0;
+            
+            let due = Math.max(0, net - received);
+            document.getElementById('due-fees').value = due.toLocaleString('en-IN');
+            
+            document.getElementById('amount-received-words').value = numberToWords(received) || 'Zero';
+        }
+
+        // --- RECEIPT MODAL ---
+        async function showReceipt() {
+            const name = document.getElementById('student-name').value;
+            const aadhar = document.getElementById('aadhar').value;
+            const admissionDate = document.getElementById('admission-date').value;
+            const biometricId = document.getElementById('biometric-id').value;
+            const gender = document.getElementById('gender').value;
+            const dob = document.getElementById('dob').value;
+            const email = document.getElementById('email').value;
+            const studentPhone = document.getElementById('student-phone').value;
+            const parentPhone = document.getElementById('parent-phone').value;
+            const marks10th = document.getElementById('marks-10th').value;
+            const address = document.getElementById('address').value;
+            const marks12th = document.getElementById('marks-12th').value;
+            const branch = document.getElementById('branch').value;
+            const fee = document.getElementById('net-fee').value;
+
+            // Submit to Backend
+            try {
+                const response = await fetch('http://localhost:8080/api/users/enroll', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ 
+                        name, email, role: 'student', fingerprint_id: biometricId,
+                        aadhar, admissionDate, gender, dob, studentPhone, parentPhone,
+                        marks10th, marks12th, address, branch, courses: selectedCourses,
+                        fee: fee.replace(/,/g, '')
+                    })
+                });
+                
+                if (!response.ok) {
+                    const data = await response.json();
+                    showToast("Error saving to backend: " + (data.error || "Unknown error"));
+                    return; // Stop here if there was an error
+                }
+            } catch (err) {
+                console.error("Backend offline or not reachable", err);
+                // We'll continue to show the receipt even if the backend is offline
+                showToast("Saved locally (Backend unreachable)");
+            }
+            
+            document.getElementById('receipt-name').innerText = name;
+            document.getElementById('receipt-branch').innerText = branch;
+            document.getElementById('receipt-courses').innerText = selectedCourses.join(', ') || 'None';
+            document.getElementById('receipt-fee').innerText = `₹${fee}`;
+
+            // Populate Printable Receipt Fields
+            const feeNum = fee.replace(/,/g, '');
+            const coursesText = selectedCourses.join(', ') || 'None';
+            const today = new Date().toLocaleDateString('en-GB');
+
+            const amtReceived = document.getElementById('amount-received').value || 0;
+            const amtReceivedWords = document.getElementById('amount-received-words').value || 'Zero';
+            const pMode = document.getElementById('payment-mode').value;
+            const installment = document.getElementById('installment-opt').value;
+            const dueFees = document.getElementById('due-fees').value;
+
+            // Student Copy
+            document.getElementById('print-student-name').innerText = name;
+            document.getElementById('print-address').innerText = address || 'NA';
+            document.getElementById('print-email').innerText = email || 'NA';
+            document.getElementById('print-contact').innerText = studentPhone || 'NA';
+            document.getElementById('print-date').innerText = today;
+            document.getElementById('print-receipt-no').innerText = Math.floor(Math.random() * 9000) + 1000;
+            document.getElementById('print-courses').innerText = coursesText;
+            document.getElementById('print-amount').innerText = amtReceived;
+            document.getElementById('print-amount-words').innerText = amtReceivedWords;
+            document.getElementById('print-payment-mode').innerText = pMode;
+            document.getElementById('print-total-fees').innerText = feeNum;
+            document.getElementById('print-installment').innerText = installment;
+            document.getElementById('print-due-date').innerText = dueFees;
+            
+            // Office Copy
+            document.getElementById('print-student-name-2').innerText = name;
+            document.getElementById('print-address-2').innerText = address || 'NA';
+            document.getElementById('print-email-2').innerText = email || 'NA';
+            document.getElementById('print-contact-2').innerText = studentPhone || 'NA';
+            document.getElementById('print-date-2').innerText = today;
+            document.getElementById('print-receipt-no-2').innerText = document.getElementById('print-receipt-no').innerText;
+            document.getElementById('print-courses-2').innerText = coursesText;
+            document.getElementById('print-amount-2').innerText = amtReceived;
+            document.getElementById('print-amount-words-2').innerText = amtReceivedWords;
+            document.getElementById('print-payment-mode-2').innerText = pMode;
+            document.getElementById('print-total-fees-2').innerText = feeNum;
+            document.getElementById('print-installment-2').innerText = installment;
+            document.getElementById('print-due-date-2').innerText = dueFees;
+
+            const modal = document.getElementById('receipt-modal');
+            const card = document.getElementById('receipt-card');
+            
+            modal.classList.remove('hidden');
+            // Trigger animation
+            setTimeout(() => {
+                modal.classList.remove('opacity-0');
+                card.classList.remove('translate-y-8');
+            }, 10);
+            
+            showToast("Enrollment Successful!");
+        }
+
+        function closeModal() {
+            const modal = document.getElementById('receipt-modal');
+            const card = document.getElementById('receipt-card');
+            
+            modal.classList.add('opacity-0');
+            card.classList.add('translate-y-8');
+            
+            setTimeout(() => {
+                modal.classList.add('hidden');
+                // Redirect back to the Student List (break out of iframe if necessary)
+                window.top.location.href = '/admissions';
+            }, 300);
+        }
+
+    </script>
+</body>
+</html>

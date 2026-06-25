@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Student Attendance Report</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Inter', sans-serif; background-color: #f8fafc; }
+    </style>
+</head>
+<body class="text-slate-800 p-8">
+
+    <div class="max-w-4xl mx-auto bg-white rounded-2xl shadow-sm border border-slate-200 p-8">
+        <h1 class="text-2xl font-bold text-violet-700 mb-6">Student Attendance Report</h1>
+        
+        <div class="flex gap-4 mb-8">
+            <input type="number" id="search-id" class="flex-1 border border-slate-300 rounded-lg px-4 py-2 focus:outline-none focus:border-violet-600" placeholder="Enter Biometric Register ID">
+            <button onclick="fetchAttendance()" class="bg-violet-600 hover:bg-violet-700 text-white font-medium py-2 px-6 rounded-lg transition-colors">
+                Search
+            </button>
+        </div>
+
+        <div id="loading" class="hidden text-center text-slate-500 py-4">Fetching records...</div>
+
+        <div id="report-container" class="hidden">
+            <!-- Student Info & Summary -->
+            <div class="bg-violet-50 rounded-xl p-6 mb-8 flex flex-col md:flex-row justify-between items-center border border-violet-100">
+                <div>
+                    <h2 class="text-xl font-semibold text-slate-800" id="student-name">Student Name</h2>
+                    <p class="text-slate-500 text-sm">Biometric ID: <span id="student-id" class="font-medium text-slate-700"></span></p>
+                </div>
+                <div class="flex gap-6 mt-4 md:mt-0 text-center">
+                    <div class="bg-white px-4 py-3 rounded-lg shadow-sm border border-slate-100">
+                        <p class="text-xs text-slate-500 font-medium uppercase tracking-wider mb-1">Total Entries</p>
+                        <p class="text-2xl font-bold text-violet-600" id="total-entries">0</p>
+                    </div>
+                    <div class="bg-white px-4 py-3 rounded-lg shadow-sm border border-slate-100">
+                        <p class="text-xs text-slate-500 font-medium uppercase tracking-wider mb-1">Total Hours</p>
+                        <p class="text-2xl font-bold text-emerald-600" id="total-hours">0</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Detailed Table -->
+            <div class="overflow-x-auto">
+                <table class="w-full text-left border-collapse">
+                    <thead>
+                        <tr class="bg-slate-50 border-y border-slate-200">
+                            <th class="py-3 px-4 text-sm font-semibold text-slate-600">Date</th>
+                            <th class="py-3 px-4 text-sm font-semibold text-slate-600">First In</th>
+                            <th class="py-3 px-4 text-sm font-semibold text-slate-600">Last Out</th>
+                            <th class="py-3 px-4 text-sm font-semibold text-slate-600 text-center">Entries</th>
+                            <th class="py-3 px-4 text-sm font-semibold text-slate-600 text-right">Duration (Mins)</th>
+                        </tr>
+                    </thead>
+                    <tbody id="table-body" class="divide-y divide-slate-100">
+                        <!-- Rows will be injected here -->
+                    </tbody>
+                </table>
+            </div>
+            
+            <div id="no-records" class="hidden text-center text-slate-500 py-8">
+                No attendance records found for this ID.
+            </div>
+        </div>
+    </div>
+
+    <script>
+        async function fetchAttendance() {
+            const bioId = document.getElementById('search-id').value.trim();
+            if(!bioId) return alert('Please enter an ID');
+
+            document.getElementById('loading').classList.remove('hidden');
+            document.getElementById('report-container').classList.add('hidden');
+            document.getElementById('no-records').classList.add('hidden');
+
+            try {
+                const response = await fetch(`/api/attendance/student/${bioId}`);
+                const data = await response.json();
+                
+                if(data.error) throw new Error(data.error);
+
+                // Populate Summary
+                document.getElementById('student-name').innerText = data.student.name;
+                document.getElementById('student-id').innerText = data.student.fingerprint_id;
+                document.getElementById('total-entries').innerText = data.summary.totalEntries;
+                document.getElementById('total-hours').innerText = data.summary.totalHours;
+
+                // Populate Table
+                const tbody = document.getElementById('table-body');
+                tbody.innerHTML = '';
+                
+                if(data.records && data.records.length > 0) {
+                    data.records.forEach(r => {
+                        const tr = document.createElement('tr');
+                        tr.className = 'hover:bg-slate-50 transition-colors';
+                        tr.innerHTML = `
+                            <td class="py-3 px-4 text-slate-800 font-medium">${r.date}</td>
+                            <td class="py-3 px-4 text-emerald-600 font-medium">${r.firstIn}</td>
+                            <td class="py-3 px-4 text-rose-600 font-medium">${r.lastOut}</td>
+                            <td class="py-3 px-4 text-slate-600 text-center"><span class="bg-slate-100 text-slate-700 py-1 px-2 rounded font-medium text-xs">${r.totalEntries}</span></td>
+                            <td class="py-3 px-4 text-slate-800 text-right font-semibold">${r.durationMinutes} m</td>
+                        `;
+                        tbody.appendChild(tr);
+                    });
+                } else {
+                    document.getElementById('no-records').classList.remove('hidden');
+                }
+
+                document.getElementById('report-container').classList.remove('hidden');
+            } catch (err) {
+                alert("Error fetching data: " + err.message);
+            } finally {
+                document.getElementById('loading').classList.add('hidden');
+            }
+        }
+    </script>
+</body>
+</html>
