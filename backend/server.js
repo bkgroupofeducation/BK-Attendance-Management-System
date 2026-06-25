@@ -59,8 +59,6 @@ mongoose.connect(mongoUri, {
     console.error('❌ MongoDB Connection Error:', err.message);
     console.log('⚠️ Running in mock fallback mode due to database offline.');
   });
-<<<<<<< Updated upstream
-=======
 const LOCAL_DB_PATH = path.join(__dirname, 'users.json');
 const LOCAL_PUNCHES_DB_PATH = path.join(__dirname, 'punches.json');
 
@@ -118,7 +116,6 @@ function saveLocalUsers(users) {
     console.error('❌ Error saving local users:', e);
   }
 }
->>>>>>> Stashed changes
 
 // --- Database Schemas & Models ---
 const userSchema = new mongoose.Schema({
@@ -126,7 +123,6 @@ const userSchema = new mongoose.Schema({
   name: { type: String, required: true },
   role: { type: String, required: true },
   fingerprint_id: { type: String, required: true, unique: true },
-<<<<<<< Updated upstream
   experience: { type: String },
   subject: { type: String },
   timing: { type: String },
@@ -194,12 +190,6 @@ const Device = mongoose.model('Device', deviceSchema);
 // Seed default users if DB is empty or update existing
 async function seedUsers() {
   try {
-<<<<<<< Updated upstream
-    const count = await User.countDocuments();
-    if (count === 0) {
-      console.log('Skipping fake user seeding. Clean database ready.');
-      console.log('🌱 Seeded default users to MongoDB');
-=======
     // Unset the old photoUrl field from all users in MongoDB
     await User.updateMany({}, { $unset: { photoUrl: "" } });
     
@@ -215,7 +205,6 @@ async function seedUsers() {
         },
         { upsert: true, new: true }
       );
->>>>>>> Stashed changes
     }
     console.log(`🌱 Synchronized ${localUsers.length} users from users.json to MongoDB`);
   } catch (err) {
@@ -465,12 +454,7 @@ app.post(['/iclock/cdata', '/iclock/cdata.aspx'], async (req, res) => {
         
         // Try to resolve user name and photo from DB
         let userName = `User ${userId}`;
-<<<<<<< Updated upstream
-        let photoUrl = '';
-        const fallbackNames = {};
-=======
         let userPhoto = null;
->>>>>>> Stashed changes
         if (mongoose.connection.readyState === 1) {
           try {
             let dbUser = await User.findOne({ id: parseInt(userId) });
@@ -479,13 +463,6 @@ app.post(['/iclock/cdata', '/iclock/cdata.aspx'], async (req, res) => {
             }
             if (dbUser) {
               userName = dbUser.name;
-<<<<<<< Updated upstream
-              photoUrl = dbUser.photoUrl || '';
-            }
-          } catch (e) { /* ignore */ }
-        } else {
-          userName = fallbackNames[userId] || fallbackNames[String(parseInt(userId))] || `User ${userId}`;
-=======
               userPhoto = dbUser.photo;
             }
           } catch (e) { /* ignore */ }
@@ -496,7 +473,6 @@ app.post(['/iclock/cdata', '/iclock/cdata.aspx'], async (req, res) => {
             userName = dbUser.name;
             userPhoto = dbUser.photo;
           }
->>>>>>> Stashed changes
         }
 
         const punchPayload = {
@@ -756,8 +732,6 @@ app.get('/api/users', async (req, res) => {
   }
 });
 
-<<<<<<< Updated upstream
-=======
 // Add or update a user (both DB and local JSON database fallback supported)
 app.post('/api/users', async (req, res) => {
   const { id, name, role, fingerprint_id, photo } = req.body;
@@ -798,7 +772,6 @@ app.post('/api/users', async (req, res) => {
   }
 });
 
->>>>>>> Stashed changes
 // User ID -> Name mapping for Live Sync Feed
 app.get('/api/users/map', async (req, res) => {
   if (mongoose.connection.readyState !== 1) {
@@ -822,11 +795,6 @@ app.get('/api/users/map', async (req, res) => {
 app.post('/api/biometric/webhook', async (req, res) => {
   const { fingerprint_id, timestamp, direction, verifyMode } = req.body;
   
-<<<<<<< Updated upstream
-  // Emit live punch to frontend via socket immediately (enables real-time simulator updates)
-  io.emit('live_punch', {
-    userId: fingerprint_id,
-=======
   let userName = `User ${fingerprint_id}`;
   let userPhoto = null;
 
@@ -855,7 +823,6 @@ app.post('/api/biometric/webhook', async (req, res) => {
     userId: fingerprint_id,
     userName,
     userPhoto,
->>>>>>> Stashed changes
     timestamp: new Date(timestamp).toLocaleString(),
     deviceSn: 'Simulator',
     verifyMode: verifyMode || '1'
@@ -956,6 +923,6 @@ app.post('/api/receipts/generate', async (req, res) => {
 // Start unified server on ALL interfaces so LAN devices (eSSL) can reach it
 server.listen(PORT, '0.0.0.0', () => {
   console.log(`🚀 Unified Backend & ADMS Server is running on http://0.0.0.0:${PORT}`);
-  console.log(`📡 LAN accessible at http://192.168.0.106:${PORT}`);
-  console.log(`🔬 ADMS endpoint: POST http://192.168.0.106:${PORT}/iclock/cdata`);
+  console.log(`📡 LAN accessible at http://192.168.0.107:${PORT}`);
+  console.log(`🔬 ADMS endpoint: POST http://192.168.0.107:${PORT}/iclock/cdata`);
 });
