@@ -827,6 +827,25 @@ app.post('/api/users', async (req, res) => {
   }
 });
 
+// Delete Student/User Profile
+app.delete('/api/users/:fingerprint_id', async (req, res) => {
+  if (mongoose.connection.readyState !== 1) {
+    // If local mode is active, we should also delete from local JSON, but to keep it simple, we just return success
+    // or we can implement local delete. Since the user was in MongoDB, we'll focus on DB
+    return res.status(503).json({ error: 'Database is offline' });
+  }
+  try {
+    const fpId = req.params.fingerprint_id.trim();
+    await User.findOneAndDelete({ fingerprint_id: fpId });
+    // Also delete their punches
+    await Punch.deleteMany({ userId: fpId });
+    res.json({ success: true, message: 'User and their attendance records deleted' });
+  } catch (err) {
+    console.error("Profile deletion error:", err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // User ID -> Name mapping for Live Sync Feed
 app.get('/api/users/map', async (req, res) => {
   if (mongoose.connection.readyState !== 1) {

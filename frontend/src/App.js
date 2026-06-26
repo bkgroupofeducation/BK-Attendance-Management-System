@@ -756,11 +756,26 @@ const AdmissionsPage = () => {
     const [students, setStudents] = useState([]);
     const [selectedStudent, setSelectedStudent] = useState(null);
 
-    useEffect(() => {
+    const fetchStudents = () => {
         api.get('/users').then(res => {
             setStudents(res.data.filter(u => u.role === 'student'));
         }).catch(err => console.error(err));
+    };
+
+    useEffect(() => {
+        fetchStudents();
     }, []);
+
+    const handleDelete = async (fingerprint_id, name) => {
+        if (window.confirm(`Are you sure you want to delete student: ${name}? This will also delete all their attendance records!`)) {
+            try {
+                await api.delete(`/users/${fingerprint_id}`);
+                fetchStudents();
+            } catch (err) {
+                alert('Failed to delete student: ' + (err.response?.data?.error || err.message));
+            }
+        }
+    };
 
     return (
         <div className="dashboard-card">
@@ -796,7 +811,10 @@ const AdmissionsPage = () => {
                             <td>{new Date().toLocaleDateString('en-GB')}</td>
                             <td><span className="status approved">Enrolled</span></td>
                             <td>
-                                <button className="btn btn-primary" style={{ padding: '4px 10px' }} onClick={() => setSelectedStudent(s)}>Profile</button>
+                                <div style={{ display: 'flex', gap: '8px' }}>
+                                    <button className="btn btn-primary" style={{ padding: '4px 10px' }} onClick={() => setSelectedStudent(s)}>Profile</button>
+                                    <button className="btn btn-primary" style={{ padding: '4px 10px', background: '#ef4444', borderColor: '#ef4444' }} onClick={() => handleDelete(s.fingerprint_id, s.name)}>Delete</button>
+                                </div>
                             </td>
                         </tr>
                     ))}
