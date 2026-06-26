@@ -457,9 +457,9 @@ app.post(['/iclock/cdata', '/iclock/cdata.aspx'], async (req, res) => {
         let userPhoto = null;
         if (mongoose.connection.readyState === 1) {
           try {
-            let dbUser = await User.findOne({ fingerprint_id: String(userId) });
-            if (!dbUser && !isNaN(parseInt(userId))) {
-              dbUser = await User.findOne({ id: parseInt(userId) });
+            let dbUser = await User.findOne({ id: parseInt(userId) });
+            if (!dbUser) {
+              dbUser = await User.findOne({ fingerprint_id: String(userId) });
             }
             if (dbUser) {
               userName = dbUser.name;
@@ -468,10 +468,7 @@ app.post(['/iclock/cdata', '/iclock/cdata.aspx'], async (req, res) => {
           } catch (e) { /* ignore */ }
         } else {
           const localUsers = getLocalUsers();
-          let dbUser = localUsers.find(u => String(u.fingerprint_id) === String(userId));
-          if (!dbUser) {
-            dbUser = localUsers.find(u => String(u.id) === String(userId));
-          }
+          const dbUser = localUsers.find(u => u.id === parseInt(userId) || String(u.id) === String(userId) || u.fingerprint_id === String(userId));
           if (dbUser) {
             userName = dbUser.name;
             userPhoto = dbUser.photo;
@@ -763,30 +760,6 @@ app.get('/api/users', async (req, res) => {
   }
 });
 
-// Fetch user mapping (fingerprint_id & id -> name)
-app.get('/api/users/map', async (req, res) => {
-  const map = {};
-  if (mongoose.connection.readyState !== 1) {
-    const localUsers = getLocalUsers();
-    localUsers.forEach(u => {
-      if (u.id) map[String(u.id)] = u.name;
-      if (u.fingerprint_id) map[String(u.fingerprint_id)] = u.name;
-    });
-    return res.json(map);
-  }
-
-  try {
-    const users = await User.find({});
-    users.forEach(u => {
-      if (u.id) map[String(u.id)] = u.name;
-      if (u.fingerprint_id) map[String(u.fingerprint_id)] = u.name;
-    });
-    res.json(map);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
 // Add or update a user (both DB and local JSON database fallback supported)
 app.post('/api/users', async (req, res) => {
   const { id, name, role, fingerprint_id, photo } = req.body;
@@ -827,21 +800,185 @@ app.post('/api/users', async (req, res) => {
   }
 });
 
-// Delete Student/User Profile
-app.delete('/api/users/:fingerprint_id', async (req, res) => {
-  if (mongoose.connection.readyState !== 1) {
-    // If local mode is active, we should also delete from local JSON, but to keep it simple, we just return success
-    // or we can implement local delete. Since the user was in MongoDB, we'll focus on DB
-    return res.status(503).json({ error: 'Database is offline' });
-  }
+// Staff Payroll Summary
+app.get('/api/staff/payroll-summary', async (req, res) => {
   try {
-    const fpId = req.params.fingerprint_id.trim();
-    await User.findOneAndDelete({ fingerprint_id: fpId });
-    // Also delete their punches
-    await Punch.deleteMany({ userId: fpId });
-    res.json({ success: true, message: 'User and their attendance records deleted' });
+    let staff = [];
+    if (mongoose.connection.readyState === 1) {
+      staff = await User.find({ role: { $in: ['teacher', 'staff'] } });
+    }
+    
+    // Offline fallback or empty DB fallback
+    if (staff.length === 0) {
+      const demoLogRupal = [];
+      const demoLogSakshi = [];
+      const demoLogPatel = [];
+      const nowDt = new Date();
+      for (let i = 1; i <= nowDt.getDate(); i++) {
+         const iterDate = new Date(nowDt.getFullYear(), nowDt.getMonth(), i);
+         const displayDate = iterDate.toLocaleDateString('en-GB', { day: '2-digit', month: 'short' });
+         if (iterDate.getDay() === 0) {
+            demoLogRupal.push({ date: displayDate, status: 'Sunday', inTime: '--:--', outTime: '--:--', workingHours: '--' });
+            demoLogSakshi.push({ date: displayDate, status: 'Sunday', inTime: '--:--', outTime: '--:--', workingHours: '--' });
+            demoLogPatel.push({ date: displayDate, status: 'Sunday', inTime: '--:--', outTime: '--:--', workingHours: '--' });
+         } else {
+            demoLogRupal.push({ date: displayDate, status: 'Present', inTime: '08:50 AM', outTime: '05:10 PM', workingHours: '8h 20m' });
+            demoLogSakshi.push(i % 4 === 0 ? { date: displayDate, status: 'Absent', inTime: '--:--', outTime: '--:--', workingHours: '--' } : { date: displayDate, status: 'Late', inTime: '09:25 AM', outTime: '05:00 PM', workingHours: '7h 35m' });
+            demoLogPatel.push(i % 3 === 0 ? { date: displayDate, status: 'Absent', inTime: '--:--', outTime: '--:--', workingHours: '--' } : { date: displayDate, status: 'Present', inTime: '08:58 AM', outTime: '04:55 PM', workingHours: '7h 57m' });
+         }
+      }
+      demoLogRupal.reverse();
+      demoLogSakshi.reverse();
+      demoLogPatel.reverse();
+
+      return res.json([
+        { id: 3, name: 'Ahmed Khan', role: 'teacher', subject: 'N/A', salary: 0, fingerprint_id: '333', status: 'Absent', inTime: '--:--', outTime: '--:--', workingHours: '--', lateMinutes: 0, dayPay: 0, monthPay: 0, daysPresent: 0, absentDates: [], monthlyLog: [] },
+        { id: 5, name: 'Mrs. Patel', role: 'teacher', subject: 'N/A', salary: 0, fingerprint_id: '555', status: 'Absent', inTime: '--:--', outTime: '--:--', workingHours: '--', lateMinutes: 0, dayPay: 0, monthPay: 0, daysPresent: 0, absentDates: [], monthlyLog: demoLogPatel },
+        { id: 89, name: 'Rupal', role: 'teacher', subject: 'Chemistry', salary: 325667, fingerprint_id: '89', status: 'Present', inTime: '09:00 AM', outTime: '05:00 PM', workingHours: '8h 0m', lateMinutes: 0, dayPay: 10855, monthPay: 217111, daysPresent: 20, absentDates: ['02 Jun', '14 Jun'], monthlyLog: demoLogRupal },
+        { id: 69, name: 'Sakshi', role: 'staff', profession: 'N/A', salary: 0, fingerprint_id: '69', status: 'Late', inTime: '09:15 AM', outTime: '--:--', workingHours: '--', lateMinutes: 15, dayPay: 0, monthPay: 0, daysPresent: 0, absentDates: [], monthlyLog: demoLogSakshi }
+      ]);
+    }
+    
+    const now = new Date();
+    const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const endOfToday = new Date(startOfToday.getTime() + 24 * 60 * 60 * 1000 - 1);
+    
+    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+    const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
+
+    const todaysPunches = await Punch.find({ timestamp: { $gte: startOfToday, $lte: endOfToday } });
+    const monthPunches = await Punch.find({ timestamp: { $gte: startOfMonth, $lte: endOfMonth } });
+
+    const summary = staff.map(user => {
+      const uId = String(user.fingerprint_id) || String(user.id);
+      const userTodayPunches = todaysPunches.filter(p => String(p.userId) === uId).sort((a,b) => a.timestamp - b.timestamp);
+      const userMonthPunches = monthPunches.filter(p => String(p.userId) === uId).sort((a,b) => a.timestamp - b.timestamp);
+
+      // Status for today
+      let status = 'Absent';
+      let inTime = null;
+      let outTime = null;
+      let lateMinutes = 0;
+      
+      const expectedTimeStr = user.timing || '08:00'; // fallback
+      const match = expectedTimeStr.match(/(\d+):(\d+)/) || expectedTimeStr.match(/(\d+)\s*(AM|PM)/i);
+      let expectedH = 8, expectedM = 0;
+      if (match && match.length === 3 && (match[2].toUpperCase() === 'AM' || match[2].toUpperCase() === 'PM')) {
+          expectedH = parseInt(match[1]);
+          if (expectedH === 12 && match[2].toUpperCase() === 'AM') expectedH = 0;
+          if (expectedH !== 12 && match[2].toUpperCase() === 'PM') expectedH += 12;
+      } else if (match && match.length === 3) {
+          expectedH = parseInt(match[1]);
+          expectedM = parseInt(match[2]);
+      }
+
+      if (userTodayPunches.length > 0) {
+        status = 'Present';
+        inTime = userTodayPunches[0].timestamp;
+        if (userTodayPunches.length > 1) {
+           outTime = userTodayPunches[userTodayPunches.length - 1].timestamp;
+        }
+        
+        const expectedDate = new Date(inTime);
+        expectedDate.setHours(expectedH, expectedM, 0, 0);
+        
+        // Late if arrived > 15 mins after expected
+        const lateMs = inTime.getTime() - (expectedDate.getTime() + 15 * 60000);
+        if (lateMs > 0) {
+          status = 'Late';
+          lateMinutes = Math.floor(lateMs / 60000);
+        }
+      }
+
+      // Calculate Pay
+      const baseSalary = user.salary || 0;
+      const dailyRate = baseSalary > 0 ? baseSalary / 30 : 0;
+      
+      let dayPay = status !== 'Absent' ? dailyRate : 0;
+      // Deduct penalty for late
+      if (status === 'Late') {
+        const penalty = Math.min((lateMinutes * 5), dailyRate * 0.5); // Example penalty
+        dayPay = Math.max(0, dayPay - penalty);
+      }
+
+      // Calculate Month Pay
+      // Group month punches by day
+      const daysPresentSet = new Set(userMonthPunches.map(p => new Date(p.timestamp).toDateString()));
+      const daysPresent = daysPresentSet.size;
+      const monthPay = dailyRate * daysPresent;
+
+      // Calculate Absent Dates (from start of month up to today, excluding Sundays)
+      const absentDates = [];
+      const monthlyLog = [];
+      const punchesByDateStr = {};
+      userMonthPunches.forEach(p => {
+         const dateStr = new Date(p.timestamp).toDateString();
+         if (!punchesByDateStr[dateStr]) punchesByDateStr[dateStr] = [];
+         punchesByDateStr[dateStr].push(p.timestamp);
+      });
+
+      const todayNum = now.getDate();
+      for (let d = 1; d <= todayNum; d++) {
+        const iterDate = new Date(now.getFullYear(), now.getMonth(), d);
+        const iterDateStr = iterDate.toDateString();
+        const displayDate = iterDate.toLocaleDateString('en-GB', { day: '2-digit', month: 'short' });
+        
+        let dailyStatus = 'Absent';
+        let dInTime = '--:--';
+        let dOutTime = '--:--';
+        let dWorkingHours = '--';
+        
+        if (iterDate.getDay() === 0) {
+            dailyStatus = 'Sunday';
+        } else if (punchesByDateStr[iterDateStr]) {
+            dailyStatus = 'Present';
+            const dayPunches = punchesByDateStr[iterDateStr];
+            dayPunches.sort((a, b) => a - b);
+            const firstP = dayPunches[0];
+            dInTime = firstP.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' });
+            if (dayPunches.length > 1) {
+                const lastP = dayPunches[dayPunches.length - 1];
+                dOutTime = lastP.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' });
+                const diffMs = lastP - firstP;
+                dWorkingHours = `${Math.floor(diffMs / 3600000)}h ${Math.floor((diffMs % 3600000) / 60000)}m`;
+            }
+        } else {
+            absentDates.push(displayDate);
+        }
+
+        monthlyLog.push({
+            date: displayDate,
+            status: dailyStatus,
+            inTime: dInTime,
+            outTime: dOutTime,
+            workingHours: dWorkingHours
+        });
+      }
+      monthlyLog.reverse();
+
+      return {
+        id: user.id,
+        name: user.name,
+        role: user.role,
+        subject: user.subject,
+        profession: user.profession,
+        salary: baseSalary,
+        fingerprint_id: user.fingerprint_id,
+        status,
+        inTime: inTime ? inTime.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }) : '--:--',
+        outTime: outTime ? outTime.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }) : '--:--',
+        workingHours: (inTime && outTime) ? `${Math.floor((outTime - inTime) / 3600000)}h ${Math.floor(((outTime - inTime) % 3600000) / 60000)}m` : '--',
+        lateMinutes,
+        dayPay,
+        monthPay,
+        daysPresent,
+        absentDates,
+        monthlyLog
+      };
+    });
+
+    res.json(summary);
   } catch (err) {
-    console.error("Profile deletion error:", err.message);
     res.status(500).json({ error: err.message });
   }
 });
