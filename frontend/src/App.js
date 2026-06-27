@@ -84,8 +84,12 @@ const Sidebar = ({ logout, user }) => {
         {admOpen && (
             <ul style={{ listStyle: 'none', padding: 0, margin: 0, background: '#1a252f' }}>
                 <li><Link to="/enroll-student" style={{ display: 'block', padding: '12px 20px 12px 40px', color: '#ecf0f1', textDecoration: 'none', fontSize: '14px', borderBottom: '1px solid #2c3e50', fontWeight: '400' }}>○ Enroll Student</Link></li>
+<<<<<<< Updated upstream
                 <li><Link to="/admissions" style={{ display: 'block', padding: '12px 20px 12px 40px', color: '#ecf0f1', textDecoration: 'none', fontSize: '14px', borderBottom: '1px solid #2c3e50', fontWeight: '400' }}>○ Bulk Upload</Link></li>
+=======
+>>>>>>> Stashed changes
                 <li><Link to="/admissions" style={{ display: 'block', padding: '12px 20px 12px 40px', color: '#ecf0f1', textDecoration: 'none', fontSize: '14px', borderBottom: '1px solid #2c3e50', fontWeight: '400' }}>○ Student List</Link></li>
+                <li><Link to="/monthly-report" style={{ display: 'block', padding: '12px 20px 12px 40px', color: '#ecf0f1', textDecoration: 'none', fontSize: '14px', borderBottom: '1px solid #2c3e50', fontWeight: '400' }}>○ Reports Center</Link></li>
                 <li><Link to="/birthdays" style={{ display: 'block', padding: '12px 20px 12px 40px', color: '#ecf0f1', textDecoration: 'none', fontSize: '14px', borderBottom: '1px solid #2c3e50', fontWeight: '400' }}>○ Birthday Reminders</Link></li>
             </ul>
         )}
@@ -300,7 +304,7 @@ const Dashboard = () => {
                 diffTime = bdayThisYear.getTime() - today.getTime();
             }
             const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-            return diffDays >= 0 && diffDays <= 30;
+            return dobDate.getMonth() === today.getMonth() && dobDate.getDate() >= today.getDate();
         }).map(u => {
             const dobDate = new Date(u.dob);
             const bdayThisYear = new Date(today.getFullYear(), dobDate.getMonth(), dobDate.getDate());
@@ -575,7 +579,7 @@ const Dashboard = () => {
                 
                 {upcomingBirthdays.length === 0 ? (
                   <div style={{ padding: '20px', textAlign: 'center', color: '#888', fontSize: '13px' }}>
-                    No birthdays in the next 30 days.
+                    No birthdays for the rest of this month.
                   </div>
                 ) : (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
@@ -751,7 +755,150 @@ const NewEnquiryPage = () => {
         </div>
     );
 };
+const ReportsPage = () => {
+    const [reportType, setReportType] = useState('monthly');
+    const [month, setMonth] = useState(new Date().toISOString().slice(0, 7)); // 'YYYY-MM'
+    const [year, setYear] = useState(new Date().getFullYear().toString());
+    const [department, setDepartment] = useState('All');
+    const [departmentsList, setDepartmentsList] = useState([
+        "Default Department",
+        "PHASE 1: Coaching for Military",
+        "PHASE 1: Coaching for Police Examination",
+        "PHASE 2: Coaching for Military",
+        "PHASE 2: Coaching for Police Examination",
+        "TRTI-PSI STI ASO( Combine Batch 1) 2024-25",
+        "TRTI TET BATCH 2024-25",
+        "TRTI TET BATCH (2) 2024-25",
+        "TRTI PSI-STI-ASO (Combbine Batch 2) 2024-25",
+        "BARTI JEE NEET Program (2023-25)",
+        "BARTI JEE Program (Phase 1) (2024-26)",
+        "BARTI NEET Program (Phase 1) (2024-26)",
+        "BARTI Police- Army 2024-25",
+        "Teachers",
+        "Staff"
+    ]);
+    const [isDownloading, setIsDownloading] = useState(false);
 
+<<<<<<< Updated upstream
+=======
+    useEffect(() => {
+        // Dynamic fetch could still merge with the static list if needed
+        api.get('/users').then(res => {
+            const allCourses = res.data.flatMap(u => u.courses || []);
+            const unique = [...new Set(allCourses)].filter(Boolean);
+            setDepartmentsList(prev => {
+                const combined = new Set([...prev, ...unique]);
+                return [...combined];
+            });
+        }).catch(err => console.error(err));
+    }, []);
+
+    const handleDownload = async () => {
+        if (reportType === 'monthly' && !month) return alert('Please select a month');
+        if (reportType === 'yearly' && !year) return alert('Please select a year');
+        
+        setIsDownloading(true);
+        try {
+            const endpoint = reportType === 'monthly' 
+                ? `/attendance/export-monthly?month=${month}&department=${encodeURIComponent(department)}`
+                : `/attendance/export-yearly?year=${year}&department=${encodeURIComponent(department)}`;
+                
+            const response = await api.get(endpoint, { responseType: 'blob' });
+            const url = window.URL.createObjectURL(new Blob([response.data]));
+            const link = document.createElement('a');
+            link.href = url;
+            const filename = reportType === 'monthly' 
+                ? `Attendance_Report_${month}_${department}.xlsx`
+                : `Attendance_Report_${year}_${department}.xlsx`;
+            link.setAttribute('download', filename);
+            document.body.appendChild(link);
+            link.click();
+            link.parentNode.removeChild(link);
+        } catch (error) {
+            console.error('Download failed', error);
+            alert('Failed to download report. Make sure you are connected to the backend.');
+        } finally {
+            setIsDownloading(false);
+        }
+    };
+
+    return (
+        <div className="dashboard-card">
+            <div className="card-header">
+                <h2>📊 Attendance Reports</h2>
+            </div>
+            <div style={{ marginBottom: '30px', background: '#fff', padding: '30px', borderRadius: '8px', border: '1px solid #e0e0e0', display: 'flex', flexDirection: 'column', gap: '20px' }}>
+                <p style={{ color: '#555', margin: 0, fontSize: '15px' }}>
+                    Generate and download full detailed attendance reports. You can filter by Department and choose between Monthly or Yearly generation.
+                </p>
+                
+                <div style={{ display: 'flex', gap: '20px', alignItems: 'flex-start', flexWrap: 'wrap' }}>
+                    <div style={{ position: 'relative', minWidth: '200px' }}>
+                        <label style={{ position: 'absolute', top: '-8px', left: '10px', background: 'white', padding: '0 5px', fontSize: '12px', color: '#888' }}>Report Type</label>
+                        <select 
+                            value={reportType} 
+                            onChange={(e) => setReportType(e.target.value)} 
+                            style={{ width: '100%', padding: '12px', border: '1px solid #e0e0e0', borderRadius: '6px', outline: 'none', fontSize: '14px', background: '#fff' }}
+                        >
+                            <option value="monthly">Monthly Report</option>
+                            <option value="yearly">Yearly Report (12 Sheets)</option>
+                        </select>
+                    </div>
+
+                    <div style={{ position: 'relative', minWidth: '250px', flex: 1 }}>
+                        <label style={{ position: 'absolute', top: '-8px', left: '10px', background: 'white', padding: '0 5px', fontSize: '12px', color: '#888' }}>Department / Batch</label>
+                        <select 
+                            value={department} 
+                            onChange={(e) => setDepartment(e.target.value)} 
+                            style={{ width: '100%', padding: '12px', border: '1px solid #e0e0e0', borderRadius: '6px', outline: 'none', fontSize: '14px', background: '#fff' }}
+                        >
+                            <option value="All">All Departments</option>
+                            {departmentsList.map(dep => (
+                                <option key={dep} value={dep}>{dep}</option>
+                            ))}
+                        </select>
+                    </div>
+
+                    {reportType === 'monthly' ? (
+                        <div style={{ position: 'relative', minWidth: '200px' }}>
+                            <label style={{ position: 'absolute', top: '-8px', left: '10px', background: 'white', padding: '0 5px', fontSize: '12px', color: '#888' }}>Select Month</label>
+                            <input 
+                                type="month" 
+                                value={month} 
+                                onChange={(e) => setMonth(e.target.value)} 
+                                style={{ width: '100%', padding: '12px', border: '1px solid #e0e0e0', borderRadius: '6px', outline: 'none', fontSize: '14px' }}
+                            />
+                        </div>
+                    ) : (
+                        <div style={{ position: 'relative', minWidth: '200px' }}>
+                            <label style={{ position: 'absolute', top: '-8px', left: '10px', background: 'white', padding: '0 5px', fontSize: '12px', color: '#888' }}>Select Year</label>
+                            <input 
+                                type="number" 
+                                value={year} 
+                                onChange={(e) => setYear(e.target.value)} 
+                                min="2000" max="2100"
+                                style={{ width: '100%', padding: '12px', border: '1px solid #e0e0e0', borderRadius: '6px', outline: 'none', fontSize: '14px' }}
+                            />
+                        </div>
+                    )}
+                    
+                </div>
+                <div style={{ marginTop: '10px' }}>
+                    <button 
+                        onClick={handleDownload} 
+                        disabled={isDownloading}
+                        style={{ display: 'flex', alignItems: 'center', gap: '8px', background: isDownloading ? '#ccc' : '#8b5cf6', color: 'white', padding: '12px 24px', borderRadius: '6px', fontWeight: 'bold', cursor: isDownloading ? 'not-allowed' : 'pointer', border: 'none', transition: 'all 0.2s ease' }}
+                    >
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+                        {isDownloading ? 'Generating...' : 'Download Excel'}
+                    </button>
+                </div>
+            </div>
+        </div>
+    );
+};
+
+>>>>>>> Stashed changes
 const AdmissionsPage = () => {
     const [students, setStudents] = useState([]);
     const [selectedStudent, setSelectedStudent] = useState(null);
@@ -871,6 +1018,12 @@ const AdmissionsPage = () => {
 const TeachersPage = () => {
     const [teachers, setTeachers] = useState([]);
     const [showModal, setShowModal] = useState(false);
+<<<<<<< Updated upstream
+=======
+    const [editId, setEditId] = useState(null);
+    const [showGlobalSummary, setShowGlobalSummary] = useState(false);
+    const [summarySearchTerm, setSummarySearchTerm] = useState('');
+>>>>>>> Stashed changes
 
     // Form State
     const [role, setRole] = useState('teacher');
@@ -899,12 +1052,48 @@ const TeachersPage = () => {
         e.preventDefault();
         const finalBatch = batch === 'Other' ? otherBatch : batch;
         try {
-            await api.post('/users/enroll', { name, email, role, fingerprint_id: fingerprintId, experience, subject, timing, salary, profession, batch: finalBatch });
+            if (editId) {
+                await api.put(`/users/${editId}`, { name, email, role, fingerprint_id: fingerprintId, experience, subject, timing, salary, profession, batch: finalBatch });
+            } else {
+                await api.post('/users/enroll', { name, email, role, fingerprint_id: fingerprintId, experience, subject, timing, salary, profession, batch: finalBatch });
+            }
             setShowModal(false);
+<<<<<<< Updated upstream
             setName(''); setEmail(''); setFingerprintId(''); setExperience(''); setSubject(''); setTiming(''); setSalary(''); setProfession(''); setBatch('11th PCMB'); setOtherBatch('');
+=======
+            setEditId(null);
+            setName(''); setEmail(''); setFingerprintId(''); setExperience(''); setSubject(''); setTiming(''); setSalary(''); setDailySalary(''); setProfession(''); setBatch('11th PCMB'); setOtherBatch('');
+>>>>>>> Stashed changes
             fetchTeachers();
         } catch (err) {
-            alert("Error adding " + role + ": " + (err.response?.data?.error || err.message));
+            alert("Error saving " + role + ": " + (err.response?.data?.error || err.message));
+        }
+    };
+
+    const handleEdit = (t) => {
+        setEditId(t.id);
+        setRole(t.role || 'teacher');
+        setName(t.name || '');
+        setEmail(t.email || '');
+        setFingerprintId(t.fingerprint_id || t.id || '');
+        setExperience(t.experience || '');
+        setSubject(t.subject || '');
+        setTiming(t.timing || '');
+        setSalary(t.salary || '');
+        setDailySalary(t.salary ? (t.salary/30).toFixed(2) : '');
+        setProfession(t.profession || '');
+        setBatch(t.batch || '11th PCMB');
+        setShowModal(true);
+    };
+
+    const handleDelete = async (id, name) => {
+        if (window.confirm(`Are you sure you want to delete ${name}?`)) {
+            try {
+                await api.delete(`/users/${id}`);
+                fetchTeachers();
+            } catch (err) {
+                alert("Error deleting: " + (err.response?.data?.error || err.message));
+            }
         }
     };
 
@@ -965,7 +1154,16 @@ const TeachersPage = () => {
             <div className="card-header">
                 <h2>👨‍🏫 Teachers & Staff Panel</h2>
                 <div className="actions">
+<<<<<<< Updated upstream
                     <button className="btn btn-primary" onClick={() => setShowModal(true)}>Add Teacher/Staff</button>
+=======
+                    <button className="btn btn-info" style={{ marginRight: '10px', background: '#3498db', color: '#fff', border: 'none' }} onClick={() => setShowGlobalSummary(true)}>📊 All Summary</button>
+                    <button className="btn btn-primary" onClick={() => { 
+                        setEditId(null);
+                        setName(''); setEmail(''); setFingerprintId(''); setExperience(''); setSubject(''); setTiming(''); setSalary(''); setDailySalary(''); setProfession(''); setBatch('11th PCMB'); setOtherBatch('');
+                        setShowModal(true); 
+                    }}>Add Teacher/Staff</button>
+>>>>>>> Stashed changes
                     <button className="btn btn-warning">Run Payroll</button>
                 </div>
             </div>
@@ -974,7 +1172,15 @@ const TeachersPage = () => {
                     <tr>
                         <th>Name</th>
                         <th>Role</th>
+<<<<<<< Updated upstream
                         <th>Subject/Profession</th>
+=======
+                        <th>Subject / Timing</th>
+                        <th>Today's Status</th>
+                        <th>In Time</th>
+                        <th>Out Time</th>
+                        <th>Working Hours</th>
+>>>>>>> Stashed changes
                         <th>Base Salary</th>
                         <th>Biometric ID</th>
                         <th>Actions</th>
@@ -985,10 +1191,61 @@ const TeachersPage = () => {
                         <tr key={t.id}>
                             <td><div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}><div className="avatar">{t.name.charAt(0)}</div> {t.name}</div></td>
                             <td style={{ textTransform: 'capitalize' }}>{t.role}</td>
+<<<<<<< Updated upstream
                             <td>{t.role === 'teacher' ? `${t.subject || 'N/A'} ${t.batch ? `(${t.batch})` : ''}` : (t.profession || 'N/A')}</td>
                             <td>₹ {t.salary ? t.salary.toLocaleString('en-IN') : '0'}</td>
                             <td><code style={{ background: '#f0f2f5', padding: '4px 8px', borderRadius: '4px' }}>{t.fingerprint_id}</code></td>
                             <td><button className="btn btn-warning" style={{ padding: '4px 10px' }} onClick={() => setSelectedTeacher(t.name)}>💰 Calculate Pay</button></td>
+=======
+                            <td>
+                                {t.role === 'teacher' ? (
+                                    <span>{t.subject || 'N/A'} {t.batch ? `(${t.batch})` : ''} {t.timing && <small style={{ color: '#888', display: 'block' }}>⏱ {t.timing}</small>}</span>
+                                ) : (
+                                    <span>{t.timing ? <span style={{ color: '#555' }}>⏱ {t.timing}</span> : <span style={{ color: '#999' }}>Staff</span>}</span>
+                                )}
+                            </td>
+                            <td>
+                                {t.status === 'Present' && <span className="badge badge-success">Present</span>}
+                                {t.status === 'Late' && <span className="badge badge-warning">Late ({t.lateMinutes}m)</span>}
+                                {t.status === 'Absent' && <span className="badge badge-danger">Absent</span>}
+                            </td>
+                            <td>
+                                {t.inTime && t.inTime !== '--:--' ? (
+                                    <span style={{ background: '#e8f8f5', color: '#16a085', padding: '3px 8px', borderRadius: '4px', fontSize: '12px', fontWeight: '600', border: '1px solid #d1f2eb' }}>
+                                        ↓ {t.inTime}
+                                    </span>
+                                ) : (
+                                    <span style={{ color: '#ccc', fontSize: '12px' }}>--:--</span>
+                                )}
+                            </td>
+                            <td>
+                                {t.outTime && t.outTime !== '--:--' ? (
+                                    <span style={{ background: '#fdf2e9', color: '#d35400', padding: '3px 8px', borderRadius: '4px', fontSize: '12px', fontWeight: '600', border: '1px solid #fae5d3' }}>
+                                        ↑ {t.outTime}
+                                    </span>
+                                ) : (
+                                    <span style={{ color: '#ccc', fontSize: '12px' }}>--:--</span>
+                                )}
+                            </td>
+                            <td>
+                                {t.workingHours && t.workingHours !== '--' ? (
+                                    <span style={{ background: '#f4f6f7', color: '#2c3e50', padding: '3px 8px', borderRadius: '4px', fontSize: '12px', fontWeight: '600', border: '1px solid #e5e8e8', display: 'flex', alignItems: 'center', gap: '4px', width: 'fit-content' }}>
+                                        ⏱ {t.workingHours}
+                                    </span>
+                                ) : (
+                                    <span style={{ color: '#ccc', fontSize: '12px' }}>--</span>
+                                )}
+                            </td>
+                            <td>{t.role === 'staff' ? '--' : `₹ ${t.salary ? t.salary.toLocaleString('en-IN') : '0'} / mo`}</td>
+                            <td>{t.role === 'staff' ? '--' : <strong style={{ color: '#27ae60' }}>₹ {t.dayPay ? Math.round(t.dayPay) : '0'}</strong>}</td>
+                            <td>
+                                <div style={{ display: 'flex', gap: '5px', flexWrap: 'wrap' }}>
+                                    {t.role === 'staff' ? null : <button className="btn btn-warning" style={{ padding: '4px 8px', fontSize: '12px' }} onClick={() => setSelectedTeacher(t)}>💰 Calc Pay</button>}
+                                    <button className="btn btn-info" style={{ padding: '4px 8px', fontSize: '12px', background: '#3498db', color: '#fff', border: 'none' }} onClick={() => handleEdit(t)}>✏️ Edit</button>
+                                    <button className="btn btn-danger" style={{ padding: '4px 8px', fontSize: '12px', background: '#e74c3c', color: '#fff', border: 'none' }} onClick={() => handleDelete(t.id, t.name)}>🗑️ Delete</button>
+                                </div>
+                            </td>
+>>>>>>> Stashed changes
                         </tr>
                     ))}
                     {teachers.length === 0 && (
@@ -1002,7 +1259,7 @@ const TeachersPage = () => {
             {showModal && (
                 <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 999 }}>
                     <div style={{ background: 'white', padding: '30px', borderRadius: '12px', width: '450px', boxShadow: '0 4px 20px rgba(0,0,0,0.2)' }}>
-                        <h3 style={{ marginTop: 0, marginBottom: '15px' }}>👤 Add New Member</h3>
+                        <h3 style={{ marginTop: 0, marginBottom: '15px' }}>{editId ? '✏️ Edit Member' : '👤 Add New Member'}</h3>
                         <form onSubmit={handleSubmit}>
                             <div style={{ display: 'flex', gap: '10px', marginBottom: '15px' }}>
                                 <label style={{ flex: 1 }}>
@@ -1014,7 +1271,7 @@ const TeachersPage = () => {
                                 </label>
                                 <label style={{ flex: 1 }}>
                                     Biometric ID: *
-                                    <input type="number" value={fingerprintId} onChange={e => setFingerprintId(e.target.value)} style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid #ddd', marginTop: '5px' }} required />
+                                    <input type="text" inputMode="numeric" pattern="[0-9]*" value={fingerprintId} onChange={e => setFingerprintId(e.target.value)} style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid #ddd', marginTop: '5px' }} required />
                                 </label>
                             </div>
 
@@ -1026,6 +1283,24 @@ const TeachersPage = () => {
                                 <input type="email" placeholder="Email Address" value={email} onChange={e => setEmail(e.target.value)} style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid #ddd' }} />
                             </div>
 
+<<<<<<< Updated upstream
+=======
+                            {role === 'teacher' && (
+                                <div style={{ background: '#f8f9fa', padding: '15px', borderRadius: '8px', marginBottom: '20px', border: '1px solid #ddd' }}>
+                                    <h4 style={{ margin: '0 0 10px 0', fontSize: '13px', color: '#555', textTransform: 'uppercase' }}>Salary Information</h4>
+                                    <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+                                        <input type="number" placeholder="Monthly Salary (₹)" value={salary} onChange={e => setSalary(e.target.value)} style={{ flex: 1, padding: '10px', borderRadius: '6px', border: '1px solid #ddd' }} />
+                                        <button type="button" className="btn btn-warning" style={{ padding: '8px 15px', fontWeight: 'bold' }} onClick={() => {
+                                            if (salary && !dailySalary) setDailySalary((parseFloat(salary) / 30).toFixed(2));
+                                            else if (dailySalary && !salary) setSalary((parseFloat(dailySalary) * 30).toFixed(2));
+                                            else if (salary && dailySalary) setDailySalary((parseFloat(salary) / 30).toFixed(2)); // default overwrite daily
+                                        }}>Calculate</button>
+                                        <input type="number" placeholder="Daily Salary (₹)" value={dailySalary} onChange={e => setDailySalary(e.target.value)} style={{ flex: 1, padding: '10px', borderRadius: '6px', border: '1px solid #ddd' }} />
+                                    </div>
+                                </div>
+                            )}
+
+>>>>>>> Stashed changes
                             {role === 'teacher' && (
                                 <div style={{ background: '#f0f4f8', padding: '15px', borderRadius: '8px', marginBottom: '20px', border: '1px solid #d9e2ec' }}>
                                     <h4 style={{ margin: '0 0 10px 0', fontSize: '13px', color: '#555', textTransform: 'uppercase' }}>Teacher Details</h4>
@@ -1046,9 +1321,9 @@ const TeachersPage = () => {
 
                             {role === 'staff' && (
                                 <div style={{ background: '#f8f9fa', padding: '15px', borderRadius: '8px', marginBottom: '20px', border: '1px solid #eee' }}>
-                                    <h4 style={{ margin: '0 0 10px 0', fontSize: '13px', color: '#555', textTransform: 'uppercase' }}>Staff Details</h4>
+                                    <h4 style={{ margin: '0 0 10px 0', fontSize: '13px', color: '#555', textTransform: 'uppercase' }}>Staff Timing</h4>
                                     <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '10px' }}>
-                                        <input type="text" placeholder="Profession (e.g. Receptionist, Security)" value={profession} onChange={e => setProfession(e.target.value)} style={{ padding: '10px', borderRadius: '6px', border: '1px solid #ddd' }} />
+                                        <input type="text" placeholder="Timing (e.g. 9 AM - 6 PM)" value={timing} onChange={e => setTiming(e.target.value)} style={{ padding: '10px', borderRadius: '6px', border: '1px solid #ddd' }} />
                                     </div>
                                 </div>
                             )}
@@ -1913,13 +2188,13 @@ const BirthdaysPage = () => {
 
         u.daysUntil = diffDays;
         u.ageTurning = bday.getFullYear() - dob.getFullYear();
-        return diffDays >= 0 && diffDays <= 30;
+        return dob.getMonth() === today.getMonth() && dob.getDate() >= today.getDate();
     }).sort((a, b) => a.daysUntil - b.daysUntil);
 
     return (
         <div className="dashboard-card">
             <div className="card-header">
-                <h2>🎂 Upcoming Birthdays (Next 30 Days)</h2>
+                <h2>🎂 Upcoming Birthdays (This Month)</h2>
             </div>
             <table className="dashboard-table">
                 <thead>
@@ -1956,7 +2231,7 @@ const BirthdaysPage = () => {
                     ))}
                     {upcomingBirthdays.length === 0 && (
                         <tr>
-                            <td colSpan="6" style={{ textAlign: 'center', padding: '20px', color: '#888' }}>No upcoming birthdays found in the next 30 days.</td>
+                            <td colSpan="6" style={{ textAlign: 'center', padding: '20px', color: '#888' }}>No upcoming birthdays found for the rest of this month.</td>
                         </tr>
                     )}
                 </tbody>
@@ -1987,6 +2262,10 @@ function App() {
                         <Route path="/" element={<ProtectedRoute><Layout logout={logout} user={user}><Dashboard /></Layout></ProtectedRoute>} />
                         <Route path="/attendance" element={<ProtectedRoute><Layout logout={logout} user={user}><AttendancePage /></Layout></ProtectedRoute>} />
                         <Route path="/admissions" element={<ProtectedRoute><Layout logout={logout} user={user}><AdmissionsPage /></Layout></ProtectedRoute>} />
+<<<<<<< Updated upstream
+=======
+                        <Route path="/monthly-report" element={<ProtectedRoute><Layout logout={logout} user={user}><ReportsPage /></Layout></ProtectedRoute>} />
+>>>>>>> Stashed changes
                         <Route path="/enroll-student" element={<ProtectedRoute><Layout logout={logout} user={user}><EnrollStudentPage /></Layout></ProtectedRoute>} />
                         <Route path="/birthdays" element={<ProtectedRoute><Layout logout={logout} user={user}><BirthdaysPage /></Layout></ProtectedRoute>} />
                         <Route path="/teachers" element={<ProtectedRoute><Layout logout={logout} user={user}><TeachersPage /></Layout></ProtectedRoute>} />
