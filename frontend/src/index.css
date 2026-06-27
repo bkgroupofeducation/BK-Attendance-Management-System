@@ -17,7 +17,7 @@ body { background: #f0f2f5; padding: 0; margin: 0; }
 .stat-card.alert .number { color: #e74c3c; }
 
 /* Main Layout */
-.main-grid { display: grid; grid-template-columns: 2fr 1fr; gap: 20px; }
+.main-grid { display: grid; grid-template-columns: 2fr 1fr; gap: 20px; align-items: start; }
 @media (max-width: 768px) { .main-grid { grid-template-columns: 1fr; } }
 
 /* Attendance Table */

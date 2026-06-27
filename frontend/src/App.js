@@ -5,7 +5,7 @@ import { io } from 'socket.io-client';
 import api from './api';
 import logo from './logo.jpeg';
 
-const backendHost = '192.168.0.107';
+const backendHost = 'localhost';
 const socket = io(`http://${backendHost}:8080`);
 const AuthContext = React.createContext(null);
 
@@ -205,15 +205,36 @@ const Dashboard = () => {
     const [lastScanToast, setLastScanToast] = useState(null);
     const toastRef = React.useRef(null);
 
+    const [editAttendance, setEditAttendance] = useState(null);
+
+    const handleSaveAttendance = async () => {
+        try {
+            await api.put('/attendance/update', {
+                userId: editAttendance.userId,
+                date: new Date().toISOString().split('T')[0], // Assuming today for live dashboard
+                inTime: editAttendance.inTime,
+                outTime: editAttendance.outTime
+            });
+            // Reload dashboard stats
+            const res = await api.get('/admin/dashboard');
+            setRecent(res.data.recentAttendance);
+            setEditAttendance(null);
+        } catch (err) {
+            alert('Failed to update attendance');
+        }
+    };
+
     useEffect(() => {
         api.get('/users').then(res => setUsers(res.data)).catch(() => { });
         api.get('/admin/dashboard').then(res => {
             setStats(res.data.stats);
             setRecent(res.data.recentAttendance);
+            if (res.data.livePunches) {
+                setLivePunches(res.data.livePunches);
+            }
         });
 
-        // Load user ID → name map
-        api.get('/users').then(res => setUsers(res.data)).catch(() => { });
+        // Setup live punch socket listener
 
         const handlePunch = (data) => {
             const entry = { ...data, id: Date.now(), time: new Date().toLocaleTimeString() };
@@ -222,7 +243,7 @@ const Dashboard = () => {
             setRecent(prev => {
                 const updated = [...prev];
                 const existingIndex = updated.findIndex(r => r.name === data.userName);
-                const formatTime = (d) => new Date(d || Date.now()).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }).toLowerCase();
+                const formatTime = (d) => new Date(d || Date.now()).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', second: '2-digit' }).toLowerCase();
                 const punchTime = formatTime(data.timestamp);
 
                 if (existingIndex > -1) {
@@ -862,6 +883,24 @@ const AdmissionsPage = () => {
     const [students, setStudents] = useState([]);
     const [selectedStudent, setSelectedStudent] = useState(null);
     const [attendanceLogs, setAttendanceLogs] = useState([]);
+    const [editAttendance, setEditAttendance] = useState(null);
+
+    const handleSaveAttendance = async () => {
+        try {
+            await api.put('/attendance/update', {
+                userId: editAttendance.userId,
+                date: editAttendance.date,
+                inTime: editAttendance.inTime,
+                outTime: editAttendance.outTime
+            });
+            // Reload attendance logs
+            const res = await api.get(`/attendance/student/${editAttendance.userId}`);
+            setAttendanceLogs(res.data.records || []);
+            setEditAttendance(null);
+        } catch (err) {
+            alert('Failed to update attendance');
+        }
+    };
 
     useEffect(() => {
         if (selectedStudent) {
@@ -1008,6 +1047,7 @@ const AdmissionsPage = () => {
                                                 <th>In Time</th>
                                                 <th>Out Time</th>
                                                 <th>Estimated Hours</th>
+                                                <th>Actions</th>
                                             </tr>
                                         </thead>
                                         <tbody>
@@ -1017,6 +1057,9 @@ const AdmissionsPage = () => {
                                                     <td><span className="status approved">{log.firstIn}</span></td>
                                                     <td><span className="status error">{log.lastOut}</span></td>
                                                     <td><strong>{log.durationMinutes} mins</strong> ({(log.durationMinutes / 60).toFixed(1)} hrs)</td>
+                                                    <td>
+                                                        <button onClick={() => setEditAttendance({ userId: selectedStudent.fingerprint_id, date: log.date, inTime: log.firstIn, outTime: log.lastOut === 'N/A' ? '' : log.lastOut, name: selectedStudent.name })} style={{ background: 'transparent', border: 'none', cursor: 'pointer', fontSize: '16px' }}>✎</button>
+                                                    </td>
                                                 </tr>
                                             ))}
                                         </tbody>
@@ -1027,6 +1070,42 @@ const AdmissionsPage = () => {
                                     </div>
                                 )}
                             </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Edit Attendance Modal */}
+            {editAttendance && (
+                <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 1050 }}>
+                    <div style={{ background: 'white', padding: '30px', borderRadius: '12px', width: '400px', boxShadow: '0 4px 20px rgba(0,0,0,0.2)' }}>
+                        <h3 style={{ marginTop: 0 }}>Edit Attendance for {editAttendance.name}</h3>
+
+                        <div style={{ marginBottom: '15px' }}>
+                            <label style={{ display: 'block', marginBottom: '5px' }}>In Time</label>
+                            <input
+                                type="text"
+                                value={editAttendance.inTime}
+                                onChange={(e) => setEditAttendance({ ...editAttendance, inTime: e.target.value })}
+                                placeholder="e.g. 09:30 AM"
+                                style={{ width: '100%', padding: '8px', borderRadius: '4px', border: '1px solid #ccc' }}
+                            />
+                        </div>
+
+                        <div style={{ marginBottom: '20px' }}>
+                            <label style={{ display: 'block', marginBottom: '5px' }}>Out Time</label>
+                            <input
+                                type="text"
+                                value={editAttendance.outTime}
+                                onChange={(e) => setEditAttendance({ ...editAttendance, outTime: e.target.value })}
+                                placeholder="e.g. 05:30 PM"
+                                style={{ width: '100%', padding: '8px', borderRadius: '4px', border: '1px solid #ccc' }}
+                            />
+                        </div>
+
+                        <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
+                            <button onClick={() => setEditAttendance(null)} className="btn" style={{ background: '#eee', color: '#333' }}>Cancel</button>
+                            <button onClick={handleSaveAttendance} className="btn btn-primary">Save Changes</button>
                         </div>
                     </div>
                 </div>
@@ -1043,6 +1122,7 @@ const TeachersPage = () => {
     const [showModal, setShowModal] = useState(false);
     const [showGlobalSummary, setShowGlobalSummary] = useState(false);
     const [summarySearchTerm, setSummarySearchTerm] = useState('');
+    const [editId, setEditId] = useState('');
 
     // Form State
     const [role, setRole] = useState('teacher');
@@ -1055,6 +1135,63 @@ const TeachersPage = () => {
     const [salary, setSalary] = useState('');
     const [dailySalary, setDailySalary] = useState('');
     const [profession, setProfession] = useState('');
+
+    const [startHour, setStartHour] = useState('09');
+    const [startMin, setStartMin] = useState('00');
+    const [startAmpm, setStartAmpm] = useState('AM');
+    const [endHour, setEndHour] = useState('06');
+    const [endMin, setEndMin] = useState('00');
+    const [endAmpm, setEndAmpm] = useState('PM');
+
+    const [phone, setPhone] = useState('');
+    const [aadhar, setAadhar] = useState('');
+    const [gender, setGender] = useState('Male');
+
+    const parseTiming = (timingStr) => {
+        const defaults = {
+            startHour: '09',
+            startMin: '00',
+            startAmpm: 'AM',
+            endHour: '06',
+            endMin: '00',
+            endAmpm: 'PM'
+        };
+        if (!timingStr) return defaults;
+        const match = timingStr.match(/(\d{1,2})(?::(\d{2}))?\s*(AM|PM)\s*-\s*(\d{1,2})(?::(\d{2}))?\s*(AM|PM)/i);
+        if (match) {
+            return {
+                startHour: match[1].padStart(2, '0'),
+                startMin: match[2] || '00',
+                startAmpm: match[3].toUpperCase(),
+                endHour: match[4].padStart(2, '0'),
+                endMin: match[5] || '00',
+                endAmpm: match[6].toUpperCase()
+            };
+        }
+        return defaults;
+    };
+
+    const calculateWorkingHours = (sh, sm, sa, eh, em, ea) => {
+        let startH = parseInt(sh, 10);
+        const startM = parseInt(sm, 10);
+        let endH = parseInt(eh, 10);
+        const endM = parseInt(em, 10);
+
+        if (sa === 'PM' && startH !== 12) startH += 12;
+        if (sa === 'AM' && startH === 12) startH = 0;
+
+        if (ea === 'PM' && endH !== 12) endH += 12;
+        if (ea === 'AM' && endH === 12) endH = 0;
+
+        let startTotalMins = startH * 60 + startM;
+        let endTotalMins = endH * 60 + endM;
+
+        if (endTotalMins < startTotalMins) {
+            endTotalMins += 24 * 60;
+        }
+
+        return (endTotalMins - startTotalMins) / 60;
+    };
     const [batch, setBatch] = useState('11th PCMB');
     const [otherBatch, setOtherBatch] = useState('');
 
@@ -1071,13 +1208,73 @@ const TeachersPage = () => {
     const handleSubmit = async (e) => {
         e.preventDefault();
         const finalBatch = batch === 'Other' ? otherBatch : batch;
+        const workingHours = calculateWorkingHours(startHour, startMin, startAmpm, endHour, endMin, endAmpm);
+        const finalTiming = `${startHour}:${startMin} ${startAmpm} - ${endHour}:${endMin} ${endAmpm} (${workingHours.toFixed(1)} hrs)`;
         try {
-            await api.post('/users/enroll', { name, email, role, fingerprint_id: fingerprintId, experience, subject, timing, salary, profession, batch: finalBatch });
+            const payload = {
+                name,
+                email,
+                role,
+                fingerprint_id: fingerprintId,
+                experience,
+                subject,
+                timing: finalTiming,
+                salary: role === 'teacher' ? salary : 0,
+                profession,
+                batch: finalBatch,
+                studentContact: phone,
+                aadhar,
+                gender
+            };
+            if (editId) {
+                await api.put(`/users/${editId}`, payload);
+            } else {
+                await api.post('/users/enroll', payload);
+            }
             setShowModal(false);
             setName(''); setEmail(''); setFingerprintId(''); setExperience(''); setSubject(''); setTiming(''); setSalary(''); setDailySalary(''); setProfession(''); setBatch('11th PCMB'); setOtherBatch('');
+            setStartHour('09'); setStartMin('00'); setStartAmpm('AM'); setEndHour('06'); setEndMin('00'); setEndAmpm('PM');
+            setPhone(''); setAadhar(''); setGender('Male');
             fetchTeachers();
         } catch (err) {
-            alert("Error adding " + role + ": " + (err.response?.data?.error || err.message));
+            alert("Error saving " + role + ": " + (err.response?.data?.error || err.message));
+        }
+    };
+
+    const handleEdit = (t) => {
+        setEditId(t.id);
+        setRole(t.role || 'teacher');
+        setName(t.name || '');
+        setEmail(t.email || '');
+        setFingerprintId(t.fingerprint_id || t.id || '');
+        setExperience(t.experience || '');
+        setSubject(t.subject || '');
+        setTiming(t.timing || '');
+        const parsed = parseTiming(t.timing || '');
+        setStartHour(parsed.startHour);
+        setStartMin(parsed.startMin);
+        setStartAmpm(parsed.startAmpm);
+        setEndHour(parsed.endHour);
+        setEndMin(parsed.endMin);
+        setEndAmpm(parsed.endAmpm);
+        setSalary(t.salary || '');
+        setDailySalary(t.salary ? (t.salary / 30).toFixed(2) : '');
+        setProfession(t.profession || '');
+        setPhone(t.studentPhone || '');
+        setAadhar(t.aadhar || '');
+        setGender(t.gender || 'Male');
+        setBatch(t.batch || '11th PCMB');
+        setShowModal(true);
+    };
+
+    const handleDelete = async (id, name) => {
+        if (window.confirm(`Are you sure you want to delete ${name}?`)) {
+            try {
+                await api.delete(`/users/${id}`);
+                fetchTeachers();
+            } catch (err) {
+                alert("Error deleting: " + (err.response?.data?.error || err.message));
+            }
         }
     };
 
@@ -1139,7 +1336,13 @@ const TeachersPage = () => {
                 <h2>👨‍🏫 Teachers & Staff Panel</h2>
                 <div className="actions">
                     <button className="btn btn-info" style={{ marginRight: '10px', background: '#3498db', color: '#fff', border: 'none' }} onClick={() => setShowGlobalSummary(true)}>📊 All Summary</button>
-                    <button className="btn btn-primary" onClick={() => setShowModal(true)}>Add Teacher/Staff</button>
+                    <button className="btn btn-primary" onClick={() => {
+                        setEditId(null);
+                        setName(''); setEmail(''); setFingerprintId(''); setExperience(''); setSubject(''); setTiming(''); setSalary(''); setDailySalary(''); setProfession(''); setBatch('11th PCMB'); setOtherBatch('');
+                        setStartHour('09'); setStartMin('00'); setStartAmpm('AM'); setEndHour('06'); setEndMin('00'); setEndAmpm('PM');
+                        setPhone(''); setAadhar(''); setGender('Male');
+                        setShowModal(true);
+                    }}>Add Teacher/Staff</button>
                     <button className="btn btn-warning">Run Payroll</button>
                 </div>
             </div>
@@ -1149,140 +1352,297 @@ const TeachersPage = () => {
                         <th>Name</th>
                         <th>Role</th>
                         <th>Subject/Profession</th>
-                        <th>Today's Status</th>
-                        <th>In Time</th>
-                        <th>Out Time</th>
-                        <th>Working Hours</th>
                         <th>Base Salary</th>
                         <th>Today's Pay</th>
                         <th>Actions</th>
-                    </tr>
-                </thead>
+                    </tr >
+                </thead >
                 <tbody>
                     {teachers.map(t => (
                         <tr key={t.id}>
                             <td><div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}><div className="avatar">{t.name.charAt(0)}</div> {t.name}</div></td>
                             <td style={{ textTransform: 'capitalize' }}>{t.role}</td>
                             <td>{t.role === 'teacher' ? `${t.subject || 'N/A'} ${t.batch ? `(${t.batch})` : ''}` : (t.profession || 'N/A')}</td>
-                            <td>
-                                {t.status === 'Present' && <span className="badge badge-success">Present</span>}
-                                {t.status === 'Late' && <span className="badge badge-warning">Late ({t.lateMinutes}m)</span>}
-                                {t.status === 'Absent' && <span className="badge badge-danger">Absent</span>}
-                            </td>
-                            <td>
-                                {t.inTime && t.inTime !== '--:--' ? (
-                                    <span style={{ background: '#e8f8f5', color: '#16a085', padding: '3px 8px', borderRadius: '4px', fontSize: '12px', fontWeight: '600', border: '1px solid #d1f2eb' }}>
-                                        ↓ {t.inTime}
-                                    </span>
-                                ) : (
-                                    <span style={{ color: '#ccc', fontSize: '12px' }}>--:--</span>
-                                )}
-                            </td>
-                            <td>
-                                {t.outTime && t.outTime !== '--:--' ? (
-                                    <span style={{ background: '#fdf2e9', color: '#d35400', padding: '3px 8px', borderRadius: '4px', fontSize: '12px', fontWeight: '600', border: '1px solid #fae5d3' }}>
-                                        ↑ {t.outTime}
-                                    </span>
-                                ) : (
-                                    <span style={{ color: '#ccc', fontSize: '12px' }}>--:--</span>
-                                )}
-                            </td>
-                            <td>
-                                {t.workingHours && t.workingHours !== '--' ? (
-                                    <span style={{ background: '#f4f6f7', color: '#2c3e50', padding: '3px 8px', borderRadius: '4px', fontSize: '12px', fontWeight: '600', border: '1px solid #e5e8e8', display: 'flex', alignItems: 'center', gap: '4px', width: 'fit-content' }}>
-                                        ⏱ {t.workingHours}
-                                    </span>
-                                ) : (
-                                    <span style={{ color: '#ccc', fontSize: '12px' }}>--</span>
-                                )}
-                            </td>
-                            <td>₹ {t.salary ? t.salary.toLocaleString('en-IN') : '0'} / mo</td>
-                            <td><strong style={{ color: '#27ae60' }}>₹ {t.dayPay ? Math.round(t.dayPay) : '0'}</strong></td>
+                            <td>₹ {t.salary ? t.salary.toLocaleString('en-IN') : '0'}</td>
+                            <td><code style={{ background: '#f0f2f5', padding: '4px 8px', borderRadius: '4px' }}>{t.fingerprint_id}</code></td>
                             <td><button className="btn btn-warning" style={{ padding: '4px 10px' }} onClick={() => setSelectedTeacher(t)}>💰 Calculate Pay</button></td>
-                        </tr>
+                        </tr >
                     ))}
-                    {teachers.length === 0 && (
-                        <tr>
-                            <td colSpan="10" style={{ textAlign: 'center', padding: '20px', color: '#888' }}>No teachers or staff found.</td>
-                        </tr>
-                    )}
-                </tbody>
-            </table>
+                    {
+                        teachers.length === 0 && (
+                            <tr>
+                                <td colSpan="10" style={{ textAlign: 'center', padding: '20px', color: '#888' }}>No teachers or staff found.</td>
+                            </tr>
+                        )
+                    }
+                </tbody >
+            </table >
 
             {showModal && (
                 <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 999 }}>
                     <div style={{ background: 'white', padding: '30px', borderRadius: '12px', width: '450px', boxShadow: '0 4px 20px rgba(0,0,0,0.2)' }}>
-                        <h3 style={{ marginTop: 0, marginBottom: '15px' }}>👤 Add New Member</h3>
+                        <h3 style={{ marginTop: 0, marginBottom: '15px' }}>{editId ? '✏️ Edit Member' : '👤 Add New Member'}</h3>
                         <form onSubmit={handleSubmit}>
                             <div style={{ display: 'flex', gap: '10px', marginBottom: '15px' }}>
-                                <label style={{ flex: 1 }}>
+                                <label style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
                                     Role:
-                                    <select value={role} onChange={e => setRole(e.target.value)} style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid #ddd', marginTop: '5px' }}>
+                                    <select value={role} onChange={e => setRole(e.target.value)} style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid #ddd', marginTop: '5px', boxSizing: 'border-box' }}>
                                         <option value="teacher">Teacher</option>
                                         <option value="staff">Staff</option>
                                     </select>
                                 </label>
-                                <label style={{ flex: 1 }}>
+                                <label style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
                                     Biometric ID: *
-                                    <input type="number" value={fingerprintId} onChange={e => setFingerprintId(e.target.value)} style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid #ddd', marginTop: '5px' }} required />
+                                    <input
+                                        type="text"
+                                        inputMode="numeric"
+                                        placeholder="Max 4 digits"
+                                        value={fingerprintId}
+                                        onChange={e => {
+                                            const val = e.target.value.replace(/\D/g, '');
+                                            if (val.length <= 4) setFingerprintId(val);
+                                        }}
+                                        style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid #ddd', marginTop: '5px', boxSizing: 'border-box' }}
+                                        required
+                                    />
                                 </label>
                             </div>
 
                             <div style={{ marginBottom: '15px' }}>
-                                <input type="text" placeholder="Full Name *" value={name} onChange={e => setName(e.target.value)} style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid #ddd' }} required />
+                                <input type="text" placeholder="Full Name *" value={name} onChange={e => setName(e.target.value)} style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid #ddd', boxSizing: 'border-box' }} required />
                             </div>
 
                             <div style={{ marginBottom: '15px' }}>
-                                <input type="email" placeholder="Email Address" value={email} onChange={e => setEmail(e.target.value)} style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid #ddd' }} />
-                            </div>
-
-                            <div style={{ background: '#f8f9fa', padding: '15px', borderRadius: '8px', marginBottom: '20px', border: '1px solid #ddd' }}>
-                                <h4 style={{ margin: '0 0 10px 0', fontSize: '13px', color: '#555', textTransform: 'uppercase' }}>Salary Information</h4>
-                                <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
-                                    <input type="number" placeholder="Monthly Salary (₹)" value={salary} onChange={e => setSalary(e.target.value)} style={{ flex: 1, padding: '10px', borderRadius: '6px', border: '1px solid #ddd' }} />
-                                    <button type="button" className="btn btn-warning" style={{ padding: '8px 15px', fontWeight: 'bold' }} onClick={() => {
-                                        if (salary && !dailySalary) setDailySalary((parseFloat(salary) / 30).toFixed(2));
-                                        else if (dailySalary && !salary) setSalary((parseFloat(dailySalary) * 30).toFixed(2));
-                                        else if (salary && dailySalary) setDailySalary((parseFloat(salary) / 30).toFixed(2)); // default overwrite daily
-                                    }}>Calculate</button>
-                                    <input type="number" placeholder="Daily Salary (₹)" value={dailySalary} onChange={e => setDailySalary(e.target.value)} style={{ flex: 1, padding: '10px', borderRadius: '6px', border: '1px solid #ddd' }} />
-                                </div>
+                                <input type="email" placeholder="Email Address" value={email} onChange={e => setEmail(e.target.value)} style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid #ddd', boxSizing: 'border-box' }} />
                             </div>
 
                             {role === 'teacher' && (
-                                <div style={{ background: '#f0f4f8', padding: '15px', borderRadius: '8px', marginBottom: '20px', border: '1px solid #d9e2ec' }}>
-                                    <h4 style={{ margin: '0 0 10px 0', fontSize: '13px', color: '#555', textTransform: 'uppercase' }}>Teacher Details</h4>
-                                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
-                                        <input type="text" placeholder="Topic / Subject" value={subject} onChange={e => setSubject(e.target.value)} style={{ padding: '10px', borderRadius: '6px', border: '1px solid #ddd' }} />
-                                        <input type="text" placeholder="Timing (e.g. 9 AM - 1 PM)" value={timing} onChange={e => setTiming(e.target.value)} style={{ padding: '10px', borderRadius: '6px', border: '1px solid #ddd' }} />
-                                        <select value={batch} onChange={e => setBatch(e.target.value)} style={{ padding: '10px', borderRadius: '6px', border: '1px solid #ddd', gridColumn: batch === 'Other' ? 'span 1' : 'span 2' }}>
-                                            <option value="11th PCMB">11th PCMB</option>
-                                            <option value="12th PCMB">12th PCMB</option>
-                                            <option value="Other">Other</option>
-                                        </select>
-                                        {batch === 'Other' && (
-                                            <input type="text" placeholder="Enter custom batch" value={otherBatch} onChange={e => setOtherBatch(e.target.value)} style={{ padding: '10px', borderRadius: '6px', border: '1px solid #ddd' }} />
-                                        )}
+                                <div style={{ background: '#f8f9fa', padding: '15px', borderRadius: '8px', marginBottom: '20px', border: '1px solid #ddd', boxSizing: 'border-box' }}>
+                                    <h4 style={{ margin: '0 0 10px 0', fontSize: '13px', color: '#555', textTransform: 'uppercase' }}>Salary Information</h4>
+                                    <div style={{ display: 'grid', gridTemplateColumns: '1fr auto 1fr', gap: '8px', alignItems: 'center', width: '100%' }}>
+                                        <input
+                                            type="text"
+                                            inputMode="numeric"
+                                            placeholder="Monthly Salary (₹)"
+                                            value={salary}
+                                            onChange={e => {
+                                                const val = e.target.value.replace(/\D/g, '');
+                                                if (val.length <= 7) setSalary(val);
+                                            }}
+                                            style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid #ddd', boxSizing: 'border-box' }}
+                                        />
+                                        <button
+                                            type="button"
+                                            className="btn btn-warning"
+                                            style={{ padding: '10px 15px', fontWeight: 'bold', border: 'none', borderRadius: '6px', cursor: 'pointer' }}
+                                            onClick={() => {
+                                                if (salary && !dailySalary) setDailySalary((parseFloat(salary) / 30).toFixed(2));
+                                                else if (dailySalary && !salary) setSalary((parseFloat(dailySalary) * 30).toFixed(2));
+                                                else if (salary && dailySalary) setDailySalary((parseFloat(salary) / 30).toFixed(2));
+                                            }}
+                                        >
+                                            Calculate
+                                        </button>
+                                        <input
+                                            type="text"
+                                            inputMode="numeric"
+                                            placeholder="Daily Salary (₹)"
+                                            value={dailySalary}
+                                            onChange={e => {
+                                                const val = e.target.value.replace(/\D/g, '');
+                                                if (val.length <= 6) setDailySalary(val);
+                                            }}
+                                            style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid #ddd', boxSizing: 'border-box' }}
+                                        />
                                     </div>
                                 </div>
                             )}
 
-                            {role === 'staff' && (
-                                <div style={{ background: '#f8f9fa', padding: '15px', borderRadius: '8px', marginBottom: '20px', border: '1px solid #eee' }}>
-                                    <h4 style={{ margin: '0 0 10px 0', fontSize: '13px', color: '#555', textTransform: 'uppercase' }}>Staff Details</h4>
-                                    <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '10px' }}>
-                                        <input type="text" placeholder="Profession (e.g. Receptionist, Security)" value={profession} onChange={e => setProfession(e.target.value)} style={{ padding: '10px', borderRadius: '6px', border: '1px solid #ddd' }} />
+                            {role === 'teacher' && (
+                                <>
+                                    <div style={{ background: '#f0f4f8', padding: '15px', borderRadius: '8px', marginBottom: '20px', border: '1px solid #d9e2ec', boxSizing: 'border-box' }}>
+                                        <h4 style={{ margin: '0 0 10px 0', fontSize: '13px', color: '#555', textTransform: 'uppercase' }}>Teacher Details</h4>
+                                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                                            <input type="text" placeholder="Topic / Subject" value={subject} onChange={e => setSubject(e.target.value)} style={{ padding: '10px', borderRadius: '6px', border: '1px solid #ddd', boxSizing: 'border-box' }} />
+                                            <select value={batch} onChange={e => setBatch(e.target.value)} style={{ padding: '10px', borderRadius: '6px', border: '1px solid #ddd', boxSizing: 'border-box' }}>
+                                                <option value="11th PCMB">11th PCMB</option>
+                                                <option value="12th PCMB">12th PCMB</option>
+                                                <option value="Other">Other</option>
+                                            </select>
+                                            {batch === 'Other' && (
+                                                <input type="text" placeholder="Enter custom batch" value={otherBatch} onChange={e => setOtherBatch(e.target.value)} style={{ padding: '10px', borderRadius: '6px', border: '1px solid #ddd', boxSizing: 'border-box', gridColumn: 'span 2' }} />
+                                            )}
+                                        </div>
                                     </div>
-                                </div>
+
+                                    <div style={{ background: '#f0f4f8', padding: '15px', borderRadius: '8px', marginBottom: '20px', border: '1px solid #d9e2ec', boxSizing: 'border-box' }}>
+                                        <h4 style={{ margin: '0 0 12px 0', fontSize: '13px', color: '#555', textTransform: 'uppercase' }}>Teacher Shift Timing</h4>
+                                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px', marginBottom: '10px' }}>
+                                            <div>
+                                                <label style={{ fontSize: '11px', color: '#666', fontWeight: 'bold', display: 'block', marginBottom: '4px' }}>Start Time:</label>
+                                                <div style={{ display: 'flex', gap: '4px' }}>
+                                                    <select value={startHour} onChange={e => setStartHour(e.target.value)} style={{ flex: 1.2, padding: '8px', borderRadius: '6px', border: '1px solid #ddd', boxSizing: 'border-box', fontSize: '13px' }}>
+                                                        {Array.from({ length: 12 }, (_, i) => String(i + 1).padStart(2, '0')).map(h => (
+                                                            <option key={h} value={h}>{h}</option>
+                                                        ))}
+                                                    </select>
+                                                    <select value={startMin} onChange={e => setStartMin(e.target.value)} style={{ flex: 1.2, padding: '8px', borderRadius: '6px', border: '1px solid #ddd', boxSizing: 'border-box', fontSize: '13px' }}>
+                                                        {['00', '05', '10', '15', '20', '25', '30', '35', '40', '45', '50', '55'].map(m => (
+                                                            <option key={m} value={m}>{m}</option>
+                                                        ))}
+                                                    </select>
+                                                    <select value={startAmpm} onChange={e => setStartAmpm(e.target.value)} style={{ flex: 1, padding: '8px', borderRadius: '6px', border: '1px solid #ddd', boxSizing: 'border-box', fontSize: '13px', minWidth: '55px' }}>
+                                                        <option value="AM">AM</option>
+                                                        <option value="PM">PM</option>
+                                                    </select>
+                                                </div>
+                                            </div>
+                                            <div>
+                                                <label style={{ fontSize: '11px', color: '#666', fontWeight: 'bold', display: 'block', marginBottom: '4px' }}>End Time:</label>
+                                                <div style={{ display: 'flex', gap: '4px' }}>
+                                                    <select value={endHour} onChange={e => setEndHour(e.target.value)} style={{ flex: 1.2, padding: '8px', borderRadius: '6px', border: '1px solid #ddd', boxSizing: 'border-box', fontSize: '13px' }}>
+                                                        {Array.from({ length: 12 }, (_, i) => String(i + 1).padStart(2, '0')).map(h => (
+                                                            <option key={h} value={h}>{h}</option>
+                                                        ))}
+                                                    </select>
+                                                    <select value={endMin} onChange={e => setEndMin(e.target.value)} style={{ flex: 1.2, padding: '8px', borderRadius: '6px', border: '1px solid #ddd', boxSizing: 'border-box', fontSize: '13px' }}>
+                                                        {['00', '05', '10', '15', '20', '25', '30', '35', '40', '45', '50', '55'].map(m => (
+                                                            <option key={m} value={m}>{m}</option>
+                                                        ))}
+                                                    </select>
+                                                    <select value={endAmpm} onChange={e => setEndAmpm(e.target.value)} style={{ flex: 1, padding: '8px', borderRadius: '6px', border: '1px solid #ddd', boxSizing: 'border-box', fontSize: '13px', minWidth: '55px' }}>
+                                                        <option value="AM">AM</option>
+                                                        <option value="PM">PM</option>
+                                                    </select>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div style={{ marginTop: '12px', fontSize: '12px', color: '#2c3e50', fontWeight: '600', display: 'flex', alignItems: 'center', gap: '6px', background: '#eef2f7', padding: '8px 12px', borderRadius: '6px' }}>
+                                            <span>🕒 Total Shift Duration:</span>
+                                            <span style={{ background: '#3498db', color: 'white', padding: '2px 8px', borderRadius: '12px', fontSize: '11px', fontWeight: 'bold' }}>
+                                                {calculateWorkingHours(startHour, startMin, startAmpm, endHour, endMin, endAmpm).toFixed(1)} Hours
+                                            </span>
+                                        </div>
+                                    </div>
+                                </>
+                            )}
+
+                            {role === 'staff' && (
+                                <>
+                                    <div style={{ background: '#f8f9fa', padding: '15px', borderRadius: '8px', marginBottom: '20px', border: '1px solid #ddd', boxSizing: 'border-box' }}>
+                                        <h4 style={{ margin: '0 0 12px 0', fontSize: '13px', color: '#555', textTransform: 'uppercase' }}>Staff Details</h4>
+                                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                                            <div style={{ gridColumn: 'span 2' }}>
+                                                <input type="text" placeholder="Profession (e.g. Receptionist, Security)" value={profession} onChange={e => setProfession(e.target.value)} style={{ padding: '10px', borderRadius: '6px', border: '1px solid #ddd', boxSizing: 'border-box', width: '100%' }} />
+                                            </div>
+                                            <div>
+                                                <input
+                                                    type="text"
+                                                    inputMode="numeric"
+                                                    placeholder="Contact Number"
+                                                    value={phone}
+                                                    onChange={e => {
+                                                        const val = e.target.value.replace(/\D/g, '');
+                                                        if (val.length <= 10) setPhone(val);
+                                                    }}
+                                                    style={{ padding: '10px', borderRadius: '6px', border: '1px solid #ddd', boxSizing: 'border-box', width: '100%' }}
+                                                />
+                                            </div>
+                                            <div>
+                                                <input
+                                                    type="text"
+                                                    inputMode="numeric"
+                                                    placeholder="Aadhar Card No. (12 digits)"
+                                                    value={aadhar}
+                                                    onChange={e => {
+                                                        const val = e.target.value.replace(/\D/g, '');
+                                                        if (val.length <= 12) setAadhar(val);
+                                                    }}
+                                                    style={{ padding: '10px', borderRadius: '6px', border: '1px solid #ddd', boxSizing: 'border-box', width: '100%' }}
+                                                />
+                                            </div>
+                                            <div>
+                                                <select value={gender} onChange={e => setGender(e.target.value)} style={{ padding: '10px', borderRadius: '6px', border: '1px solid #ddd', boxSizing: 'border-box', width: '100%' }}>
+                                                    <option value="Male">Male</option>
+                                                    <option value="Female">Female</option>
+                                                    <option value="Other">Other</option>
+                                                </select>
+                                            </div>
+                                            <div>
+                                                <input
+                                                    type="text"
+                                                    inputMode="numeric"
+                                                    placeholder="Experience (Years)"
+                                                    value={experience}
+                                                    onChange={e => {
+                                                        const val = e.target.value.replace(/\D/g, '');
+                                                        if (val.length <= 2) setExperience(val);
+                                                    }}
+                                                    style={{ padding: '10px', borderRadius: '6px', border: '1px solid #ddd', boxSizing: 'border-box', width: '100%' }}
+                                                />
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div style={{ background: '#f8f9fa', padding: '15px', borderRadius: '8px', marginBottom: '20px', border: '1px solid #ddd', boxSizing: 'border-box' }}>
+                                        <h4 style={{ margin: '0 0 12px 0', fontSize: '13px', color: '#555', textTransform: 'uppercase' }}>Staff Shift Timing</h4>
+                                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px', marginBottom: '10px' }}>
+                                            <div>
+                                                <label style={{ fontSize: '11px', color: '#666', fontWeight: 'bold', display: 'block', marginBottom: '4px' }}>Start Time:</label>
+                                                <div style={{ display: 'flex', gap: '4px' }}>
+                                                    <select value={startHour} onChange={e => setStartHour(e.target.value)} style={{ flex: 1.2, padding: '8px', borderRadius: '6px', border: '1px solid #ddd', boxSizing: 'border-box', fontSize: '13px' }}>
+                                                        {Array.from({ length: 12 }, (_, i) => String(i + 1).padStart(2, '0')).map(h => (
+                                                            <option key={h} value={h}>{h}</option>
+                                                        ))}
+                                                    </select>
+                                                    <select value={startMin} onChange={e => setStartMin(e.target.value)} style={{ flex: 1.2, padding: '8px', borderRadius: '6px', border: '1px solid #ddd', boxSizing: 'border-box', fontSize: '13px' }}>
+                                                        {['00', '05', '10', '15', '20', '25', '30', '35', '40', '45', '50', '55'].map(m => (
+                                                            <option key={m} value={m}>{m}</option>
+                                                        ))}
+                                                    </select>
+                                                    <select value={startAmpm} onChange={e => setStartAmpm(e.target.value)} style={{ flex: 1, padding: '8px', borderRadius: '6px', border: '1px solid #ddd', boxSizing: 'border-box', fontSize: '13px', minWidth: '55px' }}>
+                                                        <option value="AM">AM</option>
+                                                        <option value="PM">PM</option>
+                                                    </select>
+                                                </div>
+                                            </div>
+                                            <div>
+                                                <label style={{ fontSize: '11px', color: '#666', fontWeight: 'bold', display: 'block', marginBottom: '4px' }}>End Time:</label>
+                                                <div style={{ display: 'flex', gap: '4px' }}>
+                                                    <select value={endHour} onChange={e => setEndHour(e.target.value)} style={{ flex: 1.2, padding: '8px', borderRadius: '6px', border: '1px solid #ddd', boxSizing: 'border-box', fontSize: '13px' }}>
+                                                        {Array.from({ length: 12 }, (_, i) => String(i + 1).padStart(2, '0')).map(h => (
+                                                            <option key={h} value={h}>{h}</option>
+                                                        ))}
+                                                    </select>
+                                                    <select value={endMin} onChange={e => setEndMin(e.target.value)} style={{ flex: 1.2, padding: '8px', borderRadius: '6px', border: '1px solid #ddd', boxSizing: 'border-box', fontSize: '13px' }}>
+                                                        {['00', '05', '10', '15', '20', '25', '30', '35', '40', '45', '50', '55'].map(m => (
+                                                            <option key={m} value={m}>{m}</option>
+                                                        ))}
+                                                    </select>
+                                                    <select value={endAmpm} onChange={e => setEndAmpm(e.target.value)} style={{ flex: 1, padding: '8px', borderRadius: '6px', border: '1px solid #ddd', boxSizing: 'border-box', fontSize: '13px', minWidth: '55px' }}>
+                                                        <option value="AM">AM</option>
+                                                        <option value="PM">PM</option>
+                                                    </select>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div style={{ marginTop: '12px', fontSize: '12px', color: '#2c3e50', fontWeight: '600', display: 'flex', alignItems: 'center', gap: '6px', background: '#eef2f7', padding: '8px 12px', borderRadius: '6px' }}>
+                                            <span>🕒 Total Shift Duration:</span>
+                                            <span style={{ background: '#3498db', color: 'white', padding: '2px 8px', borderRadius: '12px', fontSize: '11px', fontWeight: 'bold' }}>
+                                                {calculateWorkingHours(startHour, startMin, startAmpm, endHour, endMin, endAmpm).toFixed(1)} Hours
+                                            </span>
+                                        </div>
+                                    </div>
+                                </>
                             )}
 
                             <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end', marginTop: '10px' }}>
                                 <button type="button" className="btn" style={{ background: '#eee', color: '#333' }} onClick={() => setShowModal(false)}>Cancel</button>
                                 <button type="submit" className="btn btn-primary">Save Member</button>
                             </div>
-                        </form>
-                    </div>
-                </div>
+                        </form >
+                    </div >
+                </div >
             )}
 
             {/* Global Summary Modal */}
@@ -1364,120 +1724,122 @@ const TeachersPage = () => {
                 </div>
             )}
 
-            {selectedTeacher && typeof selectedTeacher === 'object' && (
-                <div style={{ marginTop: '20px', padding: '20px', background: '#f8f9fa', borderRadius: '8px', borderLeft: '5px solid #27ae60' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px' }}>
-                        <h4 style={{ margin: 0 }}>Professional Payroll Calculator: {selectedTeacher.name}</h4>
-                        <button className="btn" style={{ padding: '2px 8px', background: 'transparent', color: '#666' }} onClick={() => setSelectedTeacher(null)}>✕</button>
-                    </div>
-
-                    <div style={{ display: 'flex', gap: '30px', alignItems: 'flex-start', flexWrap: 'wrap' }}>
-                        {/* Payroll Statistics */}
-                        <div style={{ display: 'flex', gap: '20px', flex: 1, flexWrap: 'wrap', alignItems: 'center' }}>
-                            <div>
-                                <div style={{ fontSize: '12px', color: '#888' }}>Month-to-Date Pay</div>
-                                <strong style={{ fontSize: '18px', color: '#2980b9' }}>₹ {selectedTeacher.monthPay ? Math.round(selectedTeacher.monthPay).toLocaleString('en-IN') : '0'}</strong>
-                            </div>
-
-                            <div style={{ borderLeft: '1px solid #ddd', paddingLeft: '20px' }}>
-                                <div style={{ fontSize: '12px', color: '#888' }}>Today's In Time</div>
-                                <strong style={{ fontSize: '16px' }}>{selectedTeacher.inTime}</strong>
-                            </div>
-
-                            <div style={{ borderLeft: '1px solid #ddd', paddingLeft: '20px' }}>
-                                <div style={{ fontSize: '12px', color: '#888' }}>Daily Base Pay</div>
-                                <strong style={{ fontSize: '16px' }}>₹ {selectedTeacher.salary ? Math.round(selectedTeacher.salary / 30) : 0}</strong>
-                            </div>
-
-                            {selectedTeacher.status === 'Late' && (
-                                <div style={{ borderLeft: '1px solid #ddd', paddingLeft: '20px' }}>
-                                    <div style={{ fontSize: '12px', color: '#e74c3c' }}>Late Penalty (-{selectedTeacher.lateMinutes}m)</div>
-                                    <strong style={{ fontSize: '16px', color: '#e74c3c' }}>- ₹ {Math.round((selectedTeacher.salary / 30) - selectedTeacher.dayPay)}</strong>
-                                </div>
-                            )}
-
-                            <div style={{ borderLeft: '1px solid #ddd', paddingLeft: '20px' }}>
-                                <div style={{ fontSize: '12px', color: '#888' }}>Today's Final Payout</div>
-                                <strong style={{ fontSize: '20px', color: '#27ae60' }}>₹ {selectedTeacher.dayPay ? Math.round(selectedTeacher.dayPay) : 0}</strong>
-                            </div>
+            {
+                selectedTeacher && typeof selectedTeacher === 'object' && (
+                    <div style={{ marginTop: '20px', padding: '20px', background: '#f8f9fa', borderRadius: '8px', borderLeft: '5px solid #27ae60' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px' }}>
+                            <h4 style={{ margin: 0 }}>Professional Payroll Calculator: {selectedTeacher.name}</h4>
+                            <button className="btn" style={{ padding: '2px 8px', background: 'transparent', color: '#666' }} onClick={() => setSelectedTeacher(null)}>✕</button>
                         </div>
 
-                        {/* Professional Attendance Details Box */}
-                        <div style={{ background: '#fff', border: '1px solid #eaeaea', borderRadius: '8px', padding: '15px', minWidth: '280px', boxShadow: '0 2px 8px rgba(0,0,0,0.03)' }}>
-                            <div style={{ fontSize: '13px', fontWeight: 'bold', color: '#333', marginBottom: '12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                <span>Attendance Summary</span>
-                                <span style={{ color: '#27ae60', background: '#e8f8f5', padding: '3px 10px', borderRadius: '12px', fontSize: '11px', fontWeight: '600' }}>
-                                    {selectedTeacher.daysPresent || 0} Present
-                                </span>
-                            </div>
-
-                            {selectedTeacher.absentDates && selectedTeacher.absentDates.length > 0 ? (
+                        <div style={{ display: 'flex', gap: '30px', alignItems: 'flex-start', flexWrap: 'wrap' }}>
+                            {/* Payroll Statistics */}
+                            <div style={{ display: 'flex', gap: '20px', flex: 1, flexWrap: 'wrap', alignItems: 'center' }}>
                                 <div>
-                                    <div style={{ fontSize: '11px', color: '#666', marginBottom: '8px', fontWeight: '500' }}>
-                                        Absent Days ({selectedTeacher.absentDates.length}):
-                                    </div>
-                                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', maxHeight: '85px', overflowY: 'auto', paddingRight: '5px' }}>
-                                        {selectedTeacher.absentDates.map((date, i) => (
-                                            <span key={i} style={{ background: '#fdf3f2', color: '#e74c3c', padding: '4px 8px', borderRadius: '6px', fontSize: '11px', border: '1px solid #fadbd8', fontWeight: '500' }}>
-                                                {date}
-                                            </span>
-                                        ))}
-                                    </div>
+                                    <div style={{ fontSize: '12px', color: '#888' }}>Month-to-Date Pay</div>
+                                    <strong style={{ fontSize: '18px', color: '#2980b9' }}>₹ {selectedTeacher.monthPay ? Math.round(selectedTeacher.monthPay).toLocaleString('en-IN') : '0'}</strong>
                                 </div>
-                            ) : (
-                                <div style={{ fontSize: '12px', color: '#888', fontStyle: 'italic', marginTop: '10px' }}>
-                                    🌟 Perfect attendance so far!
-                                </div>
-                            )}
-                        </div>
-                    </div>
 
-                    {/* Detailed Monthly Log Section */}
-                    <div style={{ marginTop: '20px', background: '#fff', border: '1px solid #eaeaea', borderRadius: '8px', padding: '15px', boxShadow: '0 2px 8px rgba(0,0,0,0.03)' }}>
-                        <h5 style={{ margin: '0 0 15px 0', color: '#333', fontSize: '14px', borderBottom: '1px solid #eee', paddingBottom: '10px' }}>📅 Detailed Monthly Log</h5>
-                        <div style={{ maxHeight: '250px', overflowY: 'auto' }}>
-                            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px', textAlign: 'left' }}>
-                                <thead style={{ position: 'sticky', top: 0, background: '#f8f9fa', boxShadow: '0 1px 2px rgba(0,0,0,0.05)', zIndex: 1 }}>
-                                    <tr>
-                                        <th style={{ padding: '10px', borderBottom: '1px solid #ddd', color: '#666' }}>Date</th>
-                                        <th style={{ padding: '10px', borderBottom: '1px solid #ddd', color: '#666' }}>Status</th>
-                                        <th style={{ padding: '10px', borderBottom: '1px solid #ddd', color: '#666' }}>In Time</th>
-                                        <th style={{ padding: '10px', borderBottom: '1px solid #ddd', color: '#666' }}>Out Time</th>
-                                        <th style={{ padding: '10px', borderBottom: '1px solid #ddd', color: '#666' }}>Duration</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {selectedTeacher.monthlyLog && selectedTeacher.monthlyLog.length > 0 ? (
-                                        selectedTeacher.monthlyLog.map((log, idx) => (
-                                            <tr key={idx} style={{ borderBottom: '1px solid #f0f0f0' }}>
-                                                <td style={{ padding: '10px', color: '#444', fontWeight: '500' }}>{log.date}</td>
-                                                <td style={{ padding: '10px' }}>
-                                                    {log.status === 'Present' && <span style={{ background: '#e8f8f5', color: '#16a085', padding: '3px 8px', borderRadius: '4px', fontSize: '11px', fontWeight: '600' }}>Present</span>}
-                                                    {log.status === 'Absent' && <span style={{ background: '#fdf3f2', color: '#e74c3c', padding: '3px 8px', borderRadius: '4px', fontSize: '11px', fontWeight: '600' }}>Absent</span>}
-                                                    {log.status === 'Sunday' && <span style={{ background: '#fcf3cf', color: '#d4ac0d', padding: '3px 8px', borderRadius: '4px', fontSize: '11px', fontWeight: '600' }}>Sunday</span>}
-                                                    {log.status === 'Late' && <span style={{ background: '#fef5e7', color: '#e67e22', padding: '3px 8px', borderRadius: '4px', fontSize: '11px', fontWeight: '600' }}>Late</span>}
-                                                </td>
-                                                <td style={{ padding: '10px', color: '#666' }}>{log.inTime}</td>
-                                                <td style={{ padding: '10px', color: '#666' }}>{log.outTime}</td>
-                                                <td style={{ padding: '10px', color: '#666', fontWeight: '500' }}>
-                                                    {log.workingHours !== '--' ? `⏱ ${log.workingHours}` : '--'}
+                                <div style={{ borderLeft: '1px solid #ddd', paddingLeft: '20px' }}>
+                                    <div style={{ fontSize: '12px', color: '#888' }}>Today's In Time</div>
+                                    <strong style={{ fontSize: '16px' }}>{selectedTeacher.inTime}</strong>
+                                </div>
+
+                                <div style={{ borderLeft: '1px solid #ddd', paddingLeft: '20px' }}>
+                                    <div style={{ fontSize: '12px', color: '#888' }}>Daily Base Pay</div>
+                                    <strong style={{ fontSize: '16px' }}>₹ {selectedTeacher.salary ? Math.round(selectedTeacher.salary / 30) : 0}</strong>
+                                </div>
+
+                                {selectedTeacher.status === 'Late' && (
+                                    <div style={{ borderLeft: '1px solid #ddd', paddingLeft: '20px' }}>
+                                        <div style={{ fontSize: '12px', color: '#e74c3c' }}>Late Penalty (-{selectedTeacher.lateMinutes}m)</div>
+                                        <strong style={{ fontSize: '16px', color: '#e74c3c' }}>- ₹ {Math.round((selectedTeacher.salary / 30) - selectedTeacher.dayPay)}</strong>
+                                    </div>
+                                )}
+
+                                <div style={{ borderLeft: '1px solid #ddd', paddingLeft: '20px' }}>
+                                    <div style={{ fontSize: '12px', color: '#888' }}>Today's Final Payout</div>
+                                    <strong style={{ fontSize: '20px', color: '#27ae60' }}>₹ {selectedTeacher.dayPay ? Math.round(selectedTeacher.dayPay) : 0}</strong>
+                                </div>
+                            </div>
+
+                            {/* Professional Attendance Details Box */}
+                            <div style={{ background: '#fff', border: '1px solid #eaeaea', borderRadius: '8px', padding: '15px', minWidth: '280px', boxShadow: '0 2px 8px rgba(0,0,0,0.03)' }}>
+                                <div style={{ fontSize: '13px', fontWeight: 'bold', color: '#333', marginBottom: '12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                    <span>Attendance Summary</span>
+                                    <span style={{ color: '#27ae60', background: '#e8f8f5', padding: '3px 10px', borderRadius: '12px', fontSize: '11px', fontWeight: '600' }}>
+                                        {selectedTeacher.daysPresent || 0} Present
+                                    </span>
+                                </div>
+
+                                {selectedTeacher.absentDates && selectedTeacher.absentDates.length > 0 ? (
+                                    <div>
+                                        <div style={{ fontSize: '11px', color: '#666', marginBottom: '8px', fontWeight: '500' }}>
+                                            Absent Days ({selectedTeacher.absentDates.length}):
+                                        </div>
+                                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', maxHeight: '85px', overflowY: 'auto', paddingRight: '5px' }}>
+                                            {selectedTeacher.absentDates.map((date, i) => (
+                                                <span key={i} style={{ background: '#fdf3f2', color: '#e74c3c', padding: '4px 8px', borderRadius: '6px', fontSize: '11px', border: '1px solid #fadbd8', fontWeight: '500' }}>
+                                                    {date}
+                                                </span>
+                                            ))}
+                                        </div>
+                                    </div>
+                                ) : (
+                                    <div style={{ fontSize: '12px', color: '#888', fontStyle: 'italic', marginTop: '10px' }}>
+                                        🌟 Perfect attendance so far!
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+
+                        {/* Detailed Monthly Log Section */}
+                        <div style={{ marginTop: '20px', background: '#fff', border: '1px solid #eaeaea', borderRadius: '8px', padding: '15px', boxShadow: '0 2px 8px rgba(0,0,0,0.03)' }}>
+                            <h5 style={{ margin: '0 0 15px 0', color: '#333', fontSize: '14px', borderBottom: '1px solid #eee', paddingBottom: '10px' }}>📅 Detailed Monthly Log</h5>
+                            <div style={{ maxHeight: '250px', overflowY: 'auto' }}>
+                                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px', textAlign: 'left' }}>
+                                    <thead style={{ position: 'sticky', top: 0, background: '#f8f9fa', boxShadow: '0 1px 2px rgba(0,0,0,0.05)', zIndex: 1 }}>
+                                        <tr>
+                                            <th style={{ padding: '10px', borderBottom: '1px solid #ddd', color: '#666' }}>Date</th>
+                                            <th style={{ padding: '10px', borderBottom: '1px solid #ddd', color: '#666' }}>Status</th>
+                                            <th style={{ padding: '10px', borderBottom: '1px solid #ddd', color: '#666' }}>In Time</th>
+                                            <th style={{ padding: '10px', borderBottom: '1px solid #ddd', color: '#666' }}>Out Time</th>
+                                            <th style={{ padding: '10px', borderBottom: '1px solid #ddd', color: '#666' }}>Duration</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {selectedTeacher.monthlyLog && selectedTeacher.monthlyLog.length > 0 ? (
+                                            selectedTeacher.monthlyLog.map((log, idx) => (
+                                                <tr key={idx} style={{ borderBottom: '1px solid #f0f0f0' }}>
+                                                    <td style={{ padding: '10px', color: '#444', fontWeight: '500' }}>{log.date}</td>
+                                                    <td style={{ padding: '10px' }}>
+                                                        {log.status === 'Present' && <span style={{ background: '#e8f8f5', color: '#16a085', padding: '3px 8px', borderRadius: '4px', fontSize: '11px', fontWeight: '600' }}>Present</span>}
+                                                        {log.status === 'Absent' && <span style={{ background: '#fdf3f2', color: '#e74c3c', padding: '3px 8px', borderRadius: '4px', fontSize: '11px', fontWeight: '600' }}>Absent</span>}
+                                                        {log.status === 'Sunday' && <span style={{ background: '#fcf3cf', color: '#d4ac0d', padding: '3px 8px', borderRadius: '4px', fontSize: '11px', fontWeight: '600' }}>Sunday</span>}
+                                                        {log.status === 'Late' && <span style={{ background: '#fef5e7', color: '#e67e22', padding: '3px 8px', borderRadius: '4px', fontSize: '11px', fontWeight: '600' }}>Late</span>}
+                                                    </td>
+                                                    <td style={{ padding: '10px', color: '#666' }}>{log.inTime}</td>
+                                                    <td style={{ padding: '10px', color: '#666' }}>{log.outTime}</td>
+                                                    <td style={{ padding: '10px', color: '#666', fontWeight: '500' }}>
+                                                        {log.workingHours !== '--' ? `⏱ ${log.workingHours}` : '--'}
+                                                    </td>
+                                                </tr>
+                                            ))
+                                        ) : (
+                                            <tr>
+                                                <td colSpan="5" style={{ padding: '20px', textAlign: 'center', color: '#888', fontStyle: 'italic' }}>
+                                                    No attendance logs available for this month yet.
                                                 </td>
                                             </tr>
-                                        ))
-                                    ) : (
-                                        <tr>
-                                            <td colSpan="5" style={{ padding: '20px', textAlign: 'center', color: '#888', fontStyle: 'italic' }}>
-                                                No attendance logs available for this month yet.
-                                            </td>
-                                        </tr>
-                                    )}
-                                </tbody>
-                            </table>
+                                        )}
+                                    </tbody>
+                                </table>
+                            </div>
                         </div>
                     </div>
-                </div>
-            )}
-        </div>
+                )
+            }
+        </div >
     );
 };
 
