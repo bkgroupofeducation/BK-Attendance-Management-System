@@ -646,7 +646,13 @@ app.get('/api/attendance/student/:fingerprint_id', async (req, res) => {
   }
 
   try {
-    const student = await User.findOne({ fingerprint_id });
+    // Match fingerprint_id even if it has trailing spaces in the DB
+    const student = await User.findOne({ 
+      $or: [
+        { fingerprint_id: fingerprint_id },
+        { fingerprint_id: new RegExp('^' + String(fingerprint_id).trim() + '\\s*$', 'i') }
+      ]
+    });
     const punches = await Punch.find({ userId: fingerprint_id }).sort({ timestamp: 1 });
 
     // Group by Date (YYYY-MM-DD)
@@ -699,6 +705,76 @@ app.get('/api/attendance/student/:fingerprint_id', async (req, res) => {
   }
 });
 
+// Manually update attendance In Time and Out Time
+app.put('/api/attendance/update', async (req, res) => {
+  try {
+    const { userId, date, inTime, outTime } = req.body;
+    if (!userId || !date) return res.status(400).json({ error: 'userId and date are required' });
+
+    // date is expected as "YYYY-MM-DD"
+    const startDate = new Date(date);
+    startDate.setHours(0, 0, 0, 0);
+    const endDate = new Date(date);
+    endDate.setHours(23, 59, 59, 999);
+
+    const punches = await Punch.find({
+      userId,
+      timestamp: { $gte: startDate, $lte: endDate }
+    }).sort({ timestamp: 1 });
+
+    // Parse incoming times (e.g. "09:54 am")
+    // Convert to Date object on the correct day
+    const parseTime = (timeStr) => {
+      const match = timeStr.trim().match(/^(\d{1,2}):(\d{2})\s*(am|pm)$/i);
+      if (!match) return null;
+      let [ , hours, minutes, period ] = match;
+      hours = parseInt(hours);
+      if (period.toLowerCase() === 'pm' && hours < 12) hours += 12;
+      if (period.toLowerCase() === 'am' && hours === 12) hours = 0;
+      const tDate = new Date(date);
+      tDate.setHours(hours, parseInt(minutes), 0, 0);
+      return tDate;
+    };
+
+    const parsedInTime = inTime ? parseTime(inTime) : null;
+    const parsedOutTime = outTime ? parseTime(outTime) : null;
+
+    if (punches.length === 0) {
+      // Create new punches if none exist
+      if (parsedInTime) {
+        await new Punch({ userId, timestamp: parsedInTime, deviceSn: 'MANUAL', direction: 'in' }).save();
+      }
+      if (parsedOutTime) {
+        await new Punch({ userId, timestamp: parsedOutTime, deviceSn: 'MANUAL', direction: 'out' }).save();
+      }
+    } else {
+      // Modify existing
+      if (parsedInTime) {
+        punches[0].timestamp = parsedInTime;
+        punches[0].deviceSn = punches[0].deviceSn === 'MANUAL' ? 'MANUAL' : punches[0].deviceSn + ' (Edited)';
+        await punches[0].save();
+      }
+      
+      if (parsedOutTime) {
+        const lastPunch = punches[punches.length - 1];
+        if (punches.length === 1 && inTime && outTime) {
+           // Only 1 punch exists, and we are setting both inTime and outTime -> need to create outTime punch
+           await new Punch({ userId, timestamp: parsedOutTime, deviceSn: 'MANUAL', direction: 'out' }).save();
+        } else {
+          lastPunch.timestamp = parsedOutTime;
+          lastPunch.deviceSn = lastPunch.deviceSn === 'MANUAL' ? 'MANUAL' : lastPunch.deviceSn + ' (Edited)';
+          await lastPunch.save();
+        }
+      }
+    }
+
+    res.json({ success: true, message: 'Attendance updated successfully' });
+  } catch (err) {
+    console.error('Failed to update attendance:', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 // Current User info
 app.get('/api/users/me', (req, res) => {
   res.json({
@@ -739,8 +815,6 @@ app.get('/api/admin/dashboard', async (req, res) => {
     }).sort({ timestamp: -1 });
 
     const punchedTodayIds = [...new Set(todaysPunches.map(p => p.userId))];
-    const todayAttendCount = punchedTodayIds.length;
-    const todayAttendPercent = totalUsers > 0 ? Math.round((todayAttendCount / totalUsers) * 100) : 0;
 
     const recentAttendance = [];
 
@@ -751,17 +825,38 @@ app.get('/api/admin/dashboard', async (req, res) => {
       punchesByUser[p.userId].push(p);
     });
 
-    for (const userId of Object.keys(punchesByUser)) {
+    const userIds = Object.keys(punchesByUser);
+    
+    // Fetch all needed users in one query to avoid N+1 bottleneck
+    const matchedUsers = await User.find({
+      $or: [
+        { fingerprint_id: { $in: userIds.map(String) } },
+        { id: { $in: userIds.map(u => parseInt(u) || 0) } }
+      ]
+    });
+
+    const userMap = {};
+    matchedUsers.forEach(u => {
+      if (u.fingerprint_id) userMap[String(u.fingerprint_id)] = u;
+      if (u.id) userMap[String(u.id)] = u;
+    });
+
+    for (const userId of userIds) {
       const userPunches = punchesByUser[userId].sort((a, b) => a.timestamp - b.timestamp);
+<<<<<<< HEAD
+      const user = userMap[String(userId)];
+=======
       let user = await User.findOne({ fingerprint_id: String(userId) });
       if (!user) user = await User.findOne({ id: parseInt(userId) || 0 });
+>>>>>>> friend/main
 
       recentAttendance.push({
+        userId: user ? user.fingerprint_id : userId,
         name: user ? user.name : `User ${userId}`,
         role: user ? user.role : 'user',
         photo: user ? user.photo : null,
-        inTime: userPunches[0].timestamp.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }),
-        outTime: userPunches.length > 1 ? userPunches[userPunches.length - 1].timestamp.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }) : '--:-- --',
+        inTime: userPunches[0].timestamp.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
+        outTime: userPunches.length > 1 ? userPunches[userPunches.length - 1].timestamp.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : '--:-- --',
         status: 'Present',
         latestTime: userPunches[userPunches.length - 1].timestamp
       });
@@ -769,6 +864,21 @@ app.get('/api/admin/dashboard', async (req, res) => {
 
     // Sort by latest punch descending
     recentAttendance.sort((a, b) => b.latestTime - a.latestTime);
+
+    const todayAttendPercent = totalUsers > 0 ? Math.round((recentAttendance.length / totalUsers) * 100) : 0;
+
+    const livePunchesRaw = todaysPunches.slice(0, 10).map(p => {
+        const u = userMap[String(p.userId)];
+        return {
+            id: p._id,
+            userId: p.userId,
+            userName: u ? u.name : `User ${p.userId}`,
+            userPhoto: u ? u.photo : null,
+            time: p.timestamp.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', second: '2-digit' }).toLowerCase(),
+            deviceSn: p.deviceSn || 'Bio System (x 2006)',
+            verifyMode: p.verifyMode || '1'
+        };
+    });
 
     res.json({
       stats: {
@@ -779,7 +889,8 @@ app.get('/api/admin/dashboard', async (req, res) => {
         activeTeachers: await User.countDocuments({ role: 'teacher' }),
         totalStudents: await User.countDocuments({ role: 'student' })
       },
-      recentAttendance
+      recentAttendance,
+      livePunches: livePunchesRaw
     });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -846,6 +957,257 @@ app.post('/api/users', async (req, res) => {
     return res.json({ success: true, user: userPayload });
   }
 });
+
+
+
+// Update full user profile (including fees)
+app.put('/api/users/:id', async (req, res) => {
+  try {
+    const id = req.params.id;
+    const updateData = req.body;
+    
+    console.log(`[PUT /api/users/${id}] Attempting update. ID received: "${id}"`);
+    if (updateData._id) {
+      delete updateData._id;
+    }
+    
+    if (mongoose.connection.readyState === 1) {
+      // Find by exact string or regex for trailing spaces
+      const user = await User.findOneAndUpdate(
+        { $or: [{ fingerprint_id: new RegExp(`^${id}\\s*$`) }, { id: parseInt(id) || -1 }] },
+        updateData,
+        { new: true }
+      );
+      if (!user) {
+         console.log(`[PUT /api/users/${id}] User not found.`);
+         return res.status(404).json({ error: 'User not found' });
+      }
+      console.log(`[PUT /api/users/${id}] User updated successfully.`);
+      return res.json({ success: true, user });
+    } else {
+      let localUsers = getLocalUsers();
+      const index = localUsers.findIndex(u => String(u.fingerprint_id) === id || String(u.id) === id);
+      if (index === -1) return res.status(404).json({ error: 'User not found' });
+      localUsers[index] = { ...localUsers[index], ...updateData };
+      saveLocalUsers(localUsers);
+      return res.json({ success: true, user: localUsers[index] });
+    }
+  } catch (err) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+// Delete Student/User Profile
+app.delete('/api/users/:fingerprint_id', async (req, res) => {
+  try {
+    const fpId = req.params.fingerprint_id.trim();
+
+    // 1. Delete from Local JSON (so they don't get re-synchronized on restart)
+    let localUsers = getLocalUsers();
+    localUsers = localUsers.filter(u => String(u.fingerprint_id) !== fpId);
+    saveLocalUsers(localUsers);
+
+    let localPunches = getLocalPunches();
+    localPunches = localPunches.filter(p => String(p.userId) !== fpId && String(p.fingerprint_id) !== fpId);
+    saveLocalPunches(localPunches);
+
+    // 2. Delete from MongoDB
+    if (mongoose.connection.readyState === 1) {
+      await User.findOneAndDelete({ fingerprint_id: fpId });
+      // Also delete their punches
+      await Punch.deleteMany({ userId: fpId });
+    }
+
+    res.json({ success: true, message: 'User and their attendance records deleted from all data stores' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Staff Payroll Summary
+app.get('/api/staff/payroll-summary', async (req, res) => {
+  try {
+    let staff = [];
+    if (mongoose.connection.readyState === 1) {
+      staff = await User.find({ role: { $in: ['teacher', 'staff'] } });
+    }
+    
+    // Offline fallback or empty DB fallback
+    if (staff.length === 0) {
+      const demoLogRupal = [];
+      const demoLogSakshi = [];
+      const demoLogPatel = [];
+      const nowDt = new Date();
+      for (let i = 1; i <= nowDt.getDate(); i++) {
+         const iterDate = new Date(nowDt.getFullYear(), nowDt.getMonth(), i);
+         const displayDate = iterDate.toLocaleDateString('en-GB', { day: '2-digit', month: 'short' });
+         if (iterDate.getDay() === 0) {
+            demoLogRupal.push({ date: displayDate, status: 'Sunday', inTime: '--:--', outTime: '--:--', workingHours: '--' });
+            demoLogSakshi.push({ date: displayDate, status: 'Sunday', inTime: '--:--', outTime: '--:--', workingHours: '--' });
+            demoLogPatel.push({ date: displayDate, status: 'Sunday', inTime: '--:--', outTime: '--:--', workingHours: '--' });
+         } else {
+            demoLogRupal.push({ date: displayDate, status: 'Present', inTime: '08:50 AM', outTime: '05:10 PM', workingHours: '8h 20m' });
+            demoLogSakshi.push(i % 4 === 0 ? { date: displayDate, status: 'Absent', inTime: '--:--', outTime: '--:--', workingHours: '--' } : { date: displayDate, status: 'Late', inTime: '09:25 AM', outTime: '05:00 PM', workingHours: '7h 35m' });
+            demoLogPatel.push(i % 3 === 0 ? { date: displayDate, status: 'Absent', inTime: '--:--', outTime: '--:--', workingHours: '--' } : { date: displayDate, status: 'Present', inTime: '08:58 AM', outTime: '04:55 PM', workingHours: '7h 57m' });
+         }
+      }
+      demoLogRupal.reverse();
+      demoLogSakshi.reverse();
+      demoLogPatel.reverse();
+
+      return res.json([
+        { id: 3, name: 'Ahmed Khan', role: 'teacher', subject: 'N/A', salary: 0, fingerprint_id: '333', status: 'Absent', inTime: '--:--', outTime: '--:--', workingHours: '--', lateMinutes: 0, dayPay: 0, monthPay: 0, daysPresent: 0, absentDates: [], monthlyLog: [] },
+        { id: 5, name: 'Mrs. Patel', role: 'teacher', subject: 'N/A', salary: 0, fingerprint_id: '555', status: 'Absent', inTime: '--:--', outTime: '--:--', workingHours: '--', lateMinutes: 0, dayPay: 0, monthPay: 0, daysPresent: 0, absentDates: [], monthlyLog: demoLogPatel },
+        { id: 89, name: 'Rupal', role: 'teacher', subject: 'Chemistry', salary: 325667, fingerprint_id: '89', status: 'Present', inTime: '09:00 AM', outTime: '05:00 PM', workingHours: '8h 0m', lateMinutes: 0, dayPay: 10855, monthPay: 217111, daysPresent: 20, absentDates: ['02 Jun', '14 Jun'], monthlyLog: demoLogRupal },
+        { id: 69, name: 'Sakshi', role: 'staff', profession: 'N/A', salary: 0, fingerprint_id: '69', status: 'Late', inTime: '09:15 AM', outTime: '--:--', workingHours: '--', lateMinutes: 15, dayPay: 0, monthPay: 0, daysPresent: 0, absentDates: [], monthlyLog: demoLogSakshi }
+      ]);
+    }
+    
+    const now = new Date();
+    const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const endOfToday = new Date(startOfToday.getTime() + 24 * 60 * 60 * 1000 - 1);
+    
+    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+    const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
+
+    const todaysPunches = await Punch.find({ timestamp: { $gte: startOfToday, $lte: endOfToday } });
+    const monthPunches = await Punch.find({ timestamp: { $gte: startOfMonth, $lte: endOfMonth } });
+
+    const summary = staff.map(user => {
+      const uId = String(user.fingerprint_id) || String(user.id);
+      const userTodayPunches = todaysPunches.filter(p => String(p.userId) === uId).sort((a,b) => a.timestamp - b.timestamp);
+      const userMonthPunches = monthPunches.filter(p => String(p.userId) === uId).sort((a,b) => a.timestamp - b.timestamp);
+
+      // Status for today
+      let status = 'Absent';
+      let inTime = null;
+      let outTime = null;
+      let lateMinutes = 0;
+      
+      const expectedTimeStr = user.timing || '08:00'; // fallback
+      const match = expectedTimeStr.match(/(\d+):(\d+)/) || expectedTimeStr.match(/(\d+)\s*(AM|PM)/i);
+      let expectedH = 8, expectedM = 0;
+      if (match && match.length === 3 && (match[2].toUpperCase() === 'AM' || match[2].toUpperCase() === 'PM')) {
+          expectedH = parseInt(match[1]);
+          if (expectedH === 12 && match[2].toUpperCase() === 'AM') expectedH = 0;
+          if (expectedH !== 12 && match[2].toUpperCase() === 'PM') expectedH += 12;
+      } else if (match && match.length === 3) {
+          expectedH = parseInt(match[1]);
+          expectedM = parseInt(match[2]);
+      }
+
+      if (userTodayPunches.length > 0) {
+        status = 'Present';
+        inTime = userTodayPunches[0].timestamp;
+        if (userTodayPunches.length > 1) {
+           outTime = userTodayPunches[userTodayPunches.length - 1].timestamp;
+        }
+        
+        const expectedDate = new Date(inTime);
+        expectedDate.setHours(expectedH, expectedM, 0, 0);
+        
+        // Late if arrived > 15 mins after expected
+        const lateMs = inTime.getTime() - (expectedDate.getTime() + 15 * 60000);
+        if (lateMs > 0) {
+          status = 'Late';
+          lateMinutes = Math.floor(lateMs / 60000);
+        }
+      }
+
+      // Calculate Pay
+      const baseSalary = user.salary || 0;
+      const dailyRate = baseSalary > 0 ? baseSalary / 30 : 0;
+      
+      let dayPay = status !== 'Absent' ? dailyRate : 0;
+      // Deduct penalty for late
+      if (status === 'Late') {
+        const penalty = Math.min((lateMinutes * 5), dailyRate * 0.5); // Example penalty
+        dayPay = Math.max(0, dayPay - penalty);
+      }
+
+      // Calculate Month Pay
+      // Group month punches by day
+      const daysPresentSet = new Set(userMonthPunches.map(p => new Date(p.timestamp).toDateString()));
+      const daysPresent = daysPresentSet.size;
+      const monthPay = dailyRate * daysPresent;
+
+      // Calculate Absent Dates (from start of month up to today, excluding Sundays)
+      const absentDates = [];
+      const monthlyLog = [];
+      const punchesByDateStr = {};
+      userMonthPunches.forEach(p => {
+         const dateStr = new Date(p.timestamp).toDateString();
+         if (!punchesByDateStr[dateStr]) punchesByDateStr[dateStr] = [];
+         punchesByDateStr[dateStr].push(p.timestamp);
+      });
+
+      const todayNum = now.getDate();
+      for (let d = 1; d <= todayNum; d++) {
+        const iterDate = new Date(now.getFullYear(), now.getMonth(), d);
+        const iterDateStr = iterDate.toDateString();
+        const displayDate = iterDate.toLocaleDateString('en-GB', { day: '2-digit', month: 'short' });
+        
+        let dailyStatus = 'Absent';
+        let dInTime = '--:--';
+        let dOutTime = '--:--';
+        let dWorkingHours = '--';
+        
+        if (iterDate.getDay() === 0) {
+            dailyStatus = 'Sunday';
+        } else if (punchesByDateStr[iterDateStr]) {
+            dailyStatus = 'Present';
+            const dayPunches = punchesByDateStr[iterDateStr];
+            dayPunches.sort((a, b) => a - b);
+            const firstP = dayPunches[0];
+            dInTime = firstP.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+            if (dayPunches.length > 1) {
+                const lastP = dayPunches[dayPunches.length - 1];
+                dOutTime = lastP.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+                const diffMs = lastP - firstP;
+                dWorkingHours = `${Math.floor(diffMs / 3600000)}h ${Math.floor((diffMs % 3600000) / 60000)}m`;
+            }
+        } else {
+            absentDates.push(displayDate);
+        }
+
+        monthlyLog.push({
+            date: displayDate,
+            status: dailyStatus,
+            inTime: dInTime,
+            outTime: dOutTime,
+            workingHours: dWorkingHours
+        });
+      }
+      monthlyLog.reverse();
+
+      return {
+        id: user.id,
+        name: user.name,
+        role: user.role,
+        subject: user.subject,
+        profession: user.profession,
+        salary: baseSalary,
+        fingerprint_id: user.fingerprint_id,
+        status,
+        inTime: inTime ? inTime.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : '--:--',
+        outTime: outTime ? outTime.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : '--:--',
+        workingHours: (inTime && outTime) ? `${Math.floor((outTime - inTime) / 3600000)}h ${Math.floor(((outTime - inTime) % 3600000) / 60000)}m` : '--',
+        lateMinutes,
+        dayPay,
+        monthPay,
+        daysPresent,
+        absentDates,
+        monthlyLog
+      };
+    });
+
+    res.json(summary);
+
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 
 // User ID -> Name mapping for Live Sync Feed
 app.get('/api/users/map', async (req, res) => {
