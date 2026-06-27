@@ -799,6 +799,24 @@ const AdmissionsPage = () => {
         }).catch(err => console.error(err));
     }, []);
 
+    const handleDelete = async (fingerprint_id, name) => {
+        if (window.confirm(`Are you sure you want to delete ${name}'s profile?`)) {
+            try {
+                await api.delete(`/users/${fingerprint_id}`);
+                setStudents(students.filter(s => s.fingerprint_id !== fingerprint_id));
+                if (selectedStudent && selectedStudent.fingerprint_id === fingerprint_id) {
+                    setSelectedStudent(null);
+                }
+            } catch (err) {
+                console.error("Error deleting student:", err);
+                const errorMsg = err.response && err.response.data && err.response.data.error 
+                    ? err.response.data.error 
+                    : err.message;
+                alert(`Failed to delete student: ${errorMsg}`);
+            }
+        }
+    };
+
     return (
         <div className="dashboard-card">
             <div className="card-header">
