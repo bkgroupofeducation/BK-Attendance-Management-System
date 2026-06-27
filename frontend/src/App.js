@@ -6,7 +6,7 @@ import api from './api';
 import logo from './logo.jpeg';
 import { ResponsiveContainer, BarChart, CartesianGrid, XAxis, YAxis, Tooltip, Bar } from 'recharts';
 
-const backendHost = '192.168.0.107';
+const backendHost = 'localhost';
 const socket = io(`http://${backendHost}:8080`);
 const AuthContext = React.createContext(null);
 
@@ -205,16 +205,37 @@ const Dashboard = () => {
 
     const [lastScanToast, setLastScanToast] = useState(null);
     const toastRef = React.useRef(null);
+    
+    const [editAttendance, setEditAttendance] = useState(null);
+    
+    const handleSaveAttendance = async () => {
+        try {
+            await api.put('/attendance/update', {
+                userId: editAttendance.userId,
+                date: new Date().toISOString().split('T')[0], // Assuming today for live dashboard
+                inTime: editAttendance.inTime,
+                outTime: editAttendance.outTime
+            });
+            // Reload dashboard stats
+            const res = await api.get('/admin/dashboard');
+            setRecent(res.data.recentAttendance);
+            setEditAttendance(null);
+        } catch (err) {
+            alert('Failed to update attendance');
+        }
+    };
 
     useEffect(() => {
         api.get('/users').then(res => setUsers(res.data)).catch(() => { });
         api.get('/admin/dashboard').then(res => {
             setStats(res.data.stats);
             setRecent(res.data.recentAttendance);
+            if (res.data.livePunches) {
+                setLivePunches(res.data.livePunches);
+            }
         });
 
-        // Load user ID → name map
-        api.get('/users').then(res => setUsers(res.data)).catch(() => { });
+        // Setup live punch socket listener
 
         const handlePunch = (data) => {
             const entry = { ...data, id: Date.now(), time: new Date().toLocaleTimeString() };
@@ -223,7 +244,7 @@ const Dashboard = () => {
             setRecent(prev => {
                 const updated = [...prev];
                 const existingIndex = updated.findIndex(r => r.name === data.userName);
-                const formatTime = (d) => new Date(d || Date.now()).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }).toLowerCase();
+                const formatTime = (d) => new Date(d || Date.now()).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', second: '2-digit' }).toLowerCase();
                 const punchTime = formatTime(data.timestamp);
 
                 if (existingIndex > -1) {
@@ -513,11 +534,12 @@ const Dashboard = () => {
                         <th>In Time</th>
                         <th>Out Time</th>
                         <th>Status</th>
+                        <th>Actions</th>
                     </tr>
                 </thead>
                 <tbody id="attendanceTable">
                     {recent.length === 0 ? (
-                      <tr><td colSpan="5" style={{ textAlign: 'center', padding: '40px', color: '#888' }}>No attendance records yet today. Waiting for machine sync...</td></tr>
+                      <tr><td colSpan="6" style={{ textAlign: 'center', padding: '40px', color: '#888' }}>No attendance records yet today. Waiting for machine sync...</td></tr>
                     ) : recent.map((r, i) => (
                       <tr key={i}>
                           <td>
@@ -534,6 +556,9 @@ const Dashboard = () => {
                           <td>{r.inTime}</td>
                           <td>{r.outTime}</td>
                           <td><span className="status present">{r.status}</span></td>
+                          <td>
+                              <button onClick={() => setEditAttendance({ userId: r.userId || r.id, inTime: r.inTime, outTime: r.outTime, name: r.name })} style={{ background: 'transparent', border: 'none', cursor: 'pointer', fontSize: '16px' }}>✎</button>
+                          </td>
                       </tr>
                     ))}
                 </tbody>
@@ -671,6 +696,42 @@ const Dashboard = () => {
             </div>
         </div>
       </div>
+
+      {/* Edit Attendance Modal */}
+      {editAttendance && (
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 1000 }}>
+          <div style={{ background: 'white', padding: '30px', borderRadius: '12px', width: '400px' }}>
+            <h3 style={{ marginTop: 0 }}>Edit Attendance for {editAttendance.name}</h3>
+            
+            <div style={{ marginBottom: '15px' }}>
+              <label style={{ display: 'block', marginBottom: '5px' }}>In Time</label>
+              <input 
+                type="text" 
+                value={editAttendance.inTime} 
+                onChange={(e) => setEditAttendance({ ...editAttendance, inTime: e.target.value })}
+                placeholder="e.g. 09:30 AM"
+                style={{ width: '100%', padding: '8px', borderRadius: '4px', border: '1px solid #ccc' }}
+              />
+            </div>
+            
+            <div style={{ marginBottom: '20px' }}>
+              <label style={{ display: 'block', marginBottom: '5px' }}>Out Time</label>
+              <input 
+                type="text" 
+                value={editAttendance.outTime} 
+                onChange={(e) => setEditAttendance({ ...editAttendance, outTime: e.target.value })}
+                placeholder="e.g. 05:30 PM"
+                style={{ width: '100%', padding: '8px', borderRadius: '4px', border: '1px solid #ccc' }}
+              />
+            </div>
+
+            <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
+              <button onClick={() => setEditAttendance(null)} className="btn" style={{ background: '#eee', color: '#333' }}>Cancel</button>
+              <button onClick={handleSaveAttendance} className="btn btn-primary">Save Changes</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div >
   );
 };
@@ -780,6 +841,24 @@ const AdmissionsPage = () => {
     const [students, setStudents] = useState([]);
     const [selectedStudent, setSelectedStudent] = useState(null);
     const [attendanceLogs, setAttendanceLogs] = useState([]);
+    const [editAttendance, setEditAttendance] = useState(null);
+
+    const handleSaveAttendance = async () => {
+        try {
+            await api.put('/attendance/update', {
+                userId: editAttendance.userId,
+                date: editAttendance.date,
+                inTime: editAttendance.inTime,
+                outTime: editAttendance.outTime
+            });
+            // Reload attendance logs
+            const res = await api.get(`/attendance/student/${editAttendance.userId}`);
+            setAttendanceLogs(res.data.records || []);
+            setEditAttendance(null);
+        } catch (err) {
+            alert('Failed to update attendance');
+        }
+    };
 
     useEffect(() => {
         if (selectedStudent) {
@@ -926,6 +1005,7 @@ const AdmissionsPage = () => {
                                                 <th>In Time</th>
                                                 <th>Out Time</th>
                                                 <th>Estimated Hours</th>
+                                                <th>Actions</th>
                                             </tr>
                                         </thead>
                                         <tbody>
@@ -935,6 +1015,9 @@ const AdmissionsPage = () => {
                                                     <td><span className="status approved">{log.firstIn}</span></td>
                                                     <td><span className="status error">{log.lastOut}</span></td>
                                                     <td><strong>{log.durationMinutes} mins</strong> ({(log.durationMinutes / 60).toFixed(1)} hrs)</td>
+                                                    <td>
+                                                      <button onClick={() => setEditAttendance({ userId: selectedStudent.fingerprint_id, date: log.date, inTime: log.firstIn, outTime: log.lastOut === 'N/A' ? '' : log.lastOut, name: selectedStudent.name })} style={{ background: 'transparent', border: 'none', cursor: 'pointer', fontSize: '16px' }}>✎</button>
+                                                    </td>
                                                 </tr>
                                             ))}
                                         </tbody>
@@ -947,6 +1030,42 @@ const AdmissionsPage = () => {
                             </div>
                         </div>
                     </div>
+                </div>
+            )}
+
+            {/* Edit Attendance Modal */}
+            {editAttendance && (
+                <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 1050 }}>
+                <div style={{ background: 'white', padding: '30px', borderRadius: '12px', width: '400px', boxShadow: '0 4px 20px rgba(0,0,0,0.2)' }}>
+                    <h3 style={{ marginTop: 0 }}>Edit Attendance for {editAttendance.name}</h3>
+                    
+                    <div style={{ marginBottom: '15px' }}>
+                    <label style={{ display: 'block', marginBottom: '5px' }}>In Time</label>
+                    <input 
+                        type="text" 
+                        value={editAttendance.inTime} 
+                        onChange={(e) => setEditAttendance({ ...editAttendance, inTime: e.target.value })}
+                        placeholder="e.g. 09:30 AM"
+                        style={{ width: '100%', padding: '8px', borderRadius: '4px', border: '1px solid #ccc' }}
+                    />
+                    </div>
+                    
+                    <div style={{ marginBottom: '20px' }}>
+                    <label style={{ display: 'block', marginBottom: '5px' }}>Out Time</label>
+                    <input 
+                        type="text" 
+                        value={editAttendance.outTime} 
+                        onChange={(e) => setEditAttendance({ ...editAttendance, outTime: e.target.value })}
+                        placeholder="e.g. 05:30 PM"
+                        style={{ width: '100%', padding: '8px', borderRadius: '4px', border: '1px solid #ccc' }}
+                    />
+                    </div>
+
+                    <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
+                    <button onClick={() => setEditAttendance(null)} className="btn" style={{ background: '#eee', color: '#333' }}>Cancel</button>
+                    <button onClick={handleSaveAttendance} className="btn btn-primary">Save Changes</button>
+                    </div>
+                </div>
                 </div>
             )}
 

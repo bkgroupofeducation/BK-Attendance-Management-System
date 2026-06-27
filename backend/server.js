@@ -618,7 +618,13 @@ app.get('/api/attendance/student/:fingerprint_id', async (req, res) => {
   }
 
   try {
-    const student = await User.findOne({ fingerprint_id });
+    // Match fingerprint_id even if it has trailing spaces in the DB
+    const student = await User.findOne({ 
+      $or: [
+        { fingerprint_id: fingerprint_id },
+        { fingerprint_id: new RegExp('^' + String(fingerprint_id).trim() + '\\s*$', 'i') }
+      ]
+    });
     const punches = await Punch.find({ userId: fingerprint_id }).sort({ timestamp: 1 });
 
     // Group by Date (YYYY-MM-DD)
@@ -671,6 +677,76 @@ app.get('/api/attendance/student/:fingerprint_id', async (req, res) => {
   }
 });
 
+// Manually update attendance In Time and Out Time
+app.put('/api/attendance/update', async (req, res) => {
+  try {
+    const { userId, date, inTime, outTime } = req.body;
+    if (!userId || !date) return res.status(400).json({ error: 'userId and date are required' });
+
+    // date is expected as "YYYY-MM-DD"
+    const startDate = new Date(date);
+    startDate.setHours(0, 0, 0, 0);
+    const endDate = new Date(date);
+    endDate.setHours(23, 59, 59, 999);
+
+    const punches = await Punch.find({
+      userId,
+      timestamp: { $gte: startDate, $lte: endDate }
+    }).sort({ timestamp: 1 });
+
+    // Parse incoming times (e.g. "09:54 am")
+    // Convert to Date object on the correct day
+    const parseTime = (timeStr) => {
+      const match = timeStr.trim().match(/^(\d{1,2}):(\d{2})\s*(am|pm)$/i);
+      if (!match) return null;
+      let [ , hours, minutes, period ] = match;
+      hours = parseInt(hours);
+      if (period.toLowerCase() === 'pm' && hours < 12) hours += 12;
+      if (period.toLowerCase() === 'am' && hours === 12) hours = 0;
+      const tDate = new Date(date);
+      tDate.setHours(hours, parseInt(minutes), 0, 0);
+      return tDate;
+    };
+
+    const parsedInTime = inTime ? parseTime(inTime) : null;
+    const parsedOutTime = outTime ? parseTime(outTime) : null;
+
+    if (punches.length === 0) {
+      // Create new punches if none exist
+      if (parsedInTime) {
+        await new Punch({ userId, timestamp: parsedInTime, deviceSn: 'MANUAL', direction: 'in' }).save();
+      }
+      if (parsedOutTime) {
+        await new Punch({ userId, timestamp: parsedOutTime, deviceSn: 'MANUAL', direction: 'out' }).save();
+      }
+    } else {
+      // Modify existing
+      if (parsedInTime) {
+        punches[0].timestamp = parsedInTime;
+        punches[0].deviceSn = punches[0].deviceSn === 'MANUAL' ? 'MANUAL' : punches[0].deviceSn + ' (Edited)';
+        await punches[0].save();
+      }
+      
+      if (parsedOutTime) {
+        const lastPunch = punches[punches.length - 1];
+        if (punches.length === 1 && inTime && outTime) {
+           // Only 1 punch exists, and we are setting both inTime and outTime -> need to create outTime punch
+           await new Punch({ userId, timestamp: parsedOutTime, deviceSn: 'MANUAL', direction: 'out' }).save();
+        } else {
+          lastPunch.timestamp = parsedOutTime;
+          lastPunch.deviceSn = lastPunch.deviceSn === 'MANUAL' ? 'MANUAL' : lastPunch.deviceSn + ' (Edited)';
+          await lastPunch.save();
+        }
+      }
+    }
+
+    res.json({ success: true, message: 'Attendance updated successfully' });
+  } catch (err) {
+    console.error('Failed to update attendance:', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 // Current User info
 app.get('/api/users/me', (req, res) => {
   res.json({
@@ -711,8 +787,6 @@ app.get('/api/admin/dashboard', async (req, res) => {
     }).sort({ timestamp: -1 });
 
     const punchedTodayIds = [...new Set(todaysPunches.map(p => p.userId))];
-    const todayAttendCount = punchedTodayIds.length;
-    const todayAttendPercent = totalUsers > 0 ? Math.round((todayAttendCount / totalUsers) * 100) : 0;
 
     const recentAttendance = [];
     
@@ -723,17 +797,33 @@ app.get('/api/admin/dashboard', async (req, res) => {
       punchesByUser[p.userId].push(p);
     });
 
-    for (const userId of Object.keys(punchesByUser)) {
+    const userIds = Object.keys(punchesByUser);
+    
+    // Fetch all needed users in one query to avoid N+1 bottleneck
+    const matchedUsers = await User.find({
+      $or: [
+        { fingerprint_id: { $in: userIds.map(String) } },
+        { id: { $in: userIds.map(u => parseInt(u) || 0) } }
+      ]
+    });
+
+    const userMap = {};
+    matchedUsers.forEach(u => {
+      if (u.fingerprint_id) userMap[String(u.fingerprint_id)] = u;
+      if (u.id) userMap[String(u.id)] = u;
+    });
+
+    for (const userId of userIds) {
       const userPunches = punchesByUser[userId].sort((a, b) => a.timestamp - b.timestamp);
-      let user = await User.findOne({ fingerprint_id: String(userId) });
-      if (!user) user = await User.findOne({ id: parseInt(userId) || 0 });
-      
+      const user = userMap[String(userId)];
+
       recentAttendance.push({
+        userId: user ? user.fingerprint_id : userId,
         name: user ? user.name : `User ${userId}`,
         role: user ? user.role : 'user',
         photo: user ? user.photo : null,
-        inTime: userPunches[0].timestamp.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }),
-        outTime: userPunches.length > 1 ? userPunches[userPunches.length - 1].timestamp.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }) : '--:-- --',
+        inTime: userPunches[0].timestamp.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
+        outTime: userPunches.length > 1 ? userPunches[userPunches.length - 1].timestamp.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : '--:-- --',
         status: 'Present',
         latestTime: userPunches[userPunches.length - 1].timestamp
       });
@@ -741,6 +831,21 @@ app.get('/api/admin/dashboard', async (req, res) => {
 
     // Sort by latest punch descending
     recentAttendance.sort((a, b) => b.latestTime - a.latestTime);
+
+    const todayAttendPercent = totalUsers > 0 ? Math.round((recentAttendance.length / totalUsers) * 100) : 0;
+
+    const livePunchesRaw = todaysPunches.slice(0, 10).map(p => {
+        const u = userMap[String(p.userId)];
+        return {
+            id: p._id,
+            userId: p.userId,
+            userName: u ? u.name : `User ${p.userId}`,
+            userPhoto: u ? u.photo : null,
+            time: p.timestamp.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', second: '2-digit' }).toLowerCase(),
+            deviceSn: p.deviceSn || 'Bio System (x 2006)',
+            verifyMode: p.verifyMode || '1'
+        };
+    });
 
     res.json({
       stats: {
@@ -751,7 +856,8 @@ app.get('/api/admin/dashboard', async (req, res) => {
         activeTeachers: await User.countDocuments({ role: 'teacher' }),
         totalStudents: await User.countDocuments({ role: 'student' })
       },
-      recentAttendance
+      recentAttendance,
+      livePunches: livePunchesRaw
     });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -1019,10 +1125,10 @@ app.get('/api/staff/payroll-summary', async (req, res) => {
             const dayPunches = punchesByDateStr[iterDateStr];
             dayPunches.sort((a, b) => a - b);
             const firstP = dayPunches[0];
-            dInTime = firstP.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' });
+            dInTime = firstP.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
             if (dayPunches.length > 1) {
                 const lastP = dayPunches[dayPunches.length - 1];
-                dOutTime = lastP.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' });
+                dOutTime = lastP.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
                 const diffMs = lastP - firstP;
                 dWorkingHours = `${Math.floor(diffMs / 3600000)}h ${Math.floor((diffMs % 3600000) / 60000)}m`;
             }
@@ -1049,8 +1155,8 @@ app.get('/api/staff/payroll-summary', async (req, res) => {
         salary: baseSalary,
         fingerprint_id: user.fingerprint_id,
         status,
-        inTime: inTime ? inTime.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }) : '--:--',
-        outTime: outTime ? outTime.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }) : '--:--',
+        inTime: inTime ? inTime.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : '--:--',
+        outTime: outTime ? outTime.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : '--:--',
         workingHours: (inTime && outTime) ? `${Math.floor((outTime - inTime) / 3600000)}h ${Math.floor(((outTime - inTime) % 3600000) / 60000)}m` : '--',
         lateMinutes,
         dayPay,
