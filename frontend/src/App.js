@@ -7,11 +7,22 @@ import logo from './logo.jpeg';
 import * as XLSX from 'xlsx';
 import jsPDF from 'jspdf';
 import 'jspdf-autotable';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 
-const backendHost = window.location.hostname;
+const backendHost = '192.168.0.102';
 const socket = io(`http://${backendHost}:8080`);
 const AuthContext = React.createContext(null);
 
+const getEstimatedHrs = (r) => {
+    if (!r.firstTime) return '--';
+    const start = new Date(r.firstTime);
+    const end = r.lastTime ? new Date(r.lastTime) : new Date();
+    const diffMs = end.getTime() - start.getTime();
+    if (diffMs < 0) return '--';
+    const hrs = Math.floor(diffMs / 3600000);
+    const mins = Math.floor((diffMs % 3600000) / 60000);
+    return `${hrs}h ${mins}m`;
+};
 // --- LOGIN PAGE ---
 const Login = () => {
     const [email, setEmail] = useState('');
@@ -87,7 +98,7 @@ const Sidebar = ({ logout, user }) => {
                     {admOpen && (
                         <ul style={{ listStyle: 'none', padding: 0, margin: 0, background: '#1a252f' }}>
                             <li><Link to="/enroll-student" style={{ display: 'block', padding: '12px 20px 12px 40px', color: '#ecf0f1', textDecoration: 'none', fontSize: '14px', borderBottom: '1px solid #2c3e50', fontWeight: '400' }}>○ Enroll Student</Link></li>
-                            <li><Link to="/admissions" style={{ display: 'block', padding: '12px 20px 12px 40px', color: '#ecf0f1', textDecoration: 'none', fontSize: '14px', borderBottom: '1px solid #2c3e50', fontWeight: '400' }}>○ Bulk Upload</Link></li>
+                            <li><Link to="/bulk-upload" style={{ display: 'block', padding: '12px 20px 12px 40px', color: '#ecf0f1', textDecoration: 'none', fontSize: '14px', borderBottom: '1px solid #2c3e50', fontWeight: '400' }}>○ Bulk Upload</Link></li>
                             <li><Link to="/admissions" style={{ display: 'block', padding: '12px 20px 12px 40px', color: '#ecf0f1', textDecoration: 'none', fontSize: '14px', borderBottom: '1px solid #2c3e50', fontWeight: '400' }}>○ Student List</Link></li>
                             <li><Link to="/birthdays" style={{ display: 'block', padding: '12px 20px 12px 40px', color: '#ecf0f1', textDecoration: 'none', fontSize: '14px', borderBottom: '1px solid #2c3e50', fontWeight: '400' }}>○ Birthday Reminders</Link></li>
                         </ul>
@@ -250,7 +261,7 @@ const Dashboard = () => {
                 const punchTime = formatTime(data.timestamp);
 
                 if (existingIndex > -1) {
-                    updated[existingIndex] = { ...updated[existingIndex], outTime: punchTime };
+                    updated[existingIndex] = { ...updated[existingIndex], outTime: punchTime, lastTime: data.timestamp };
                     // Move to top
                     const item = updated.splice(existingIndex, 1)[0];
                     updated.unshift(item);
@@ -261,7 +272,9 @@ const Dashboard = () => {
                         photo: data.userPhoto || null,
                         inTime: punchTime,
                         outTime: '--:-- --',
-                        status: 'Present'
+                        status: data.status || 'Present',
+                        firstTime: data.timestamp,
+                        lastTime: null
                     });
                 }
                 return updated;
@@ -311,8 +324,8 @@ const Dashboard = () => {
     const getInitials = (name) => name ? name.split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2) : '??';
 
     const resolvedName = (punch) => {
-        const punchId = String(punch.userId).trim();
-        const user = users.find(u => String(u.id).trim() === punchId || String(u.fingerprint_id).trim() === punchId);
+        let user = users.find(u => String(u.fingerprint_id) === String(punch.userId));
+        if (!user) user = users.find(u => String(u.id) === String(punch.userId));
         return user ? user.name : (punch.userName || `User ${punch.userId}`);
     };
 
@@ -321,12 +334,12 @@ const Dashboard = () => {
         if (punch.userPhoto) {
             photo = punch.userPhoto;
         } else {
-            const punchId = String(punch.userId).trim();
-            const user = users.find(u => String(u.id).trim() === punchId || String(u.fingerprint_id).trim() === punchId);
+            let user = users.find(u => String(u.fingerprint_id) === String(punch.userId));
+            if (!user) user = users.find(u => String(u.id) === String(punch.userId));
             photo = user ? user.photo : null;
         }
         if (photo) {
-            if (photo.startsWith('http')) return photo;
+            if (photo.startsWith('http') || photo.startsWith('data:')) return photo;
             return `http://${backendHost}:8080${photo}`;
         }
         return null;
@@ -349,7 +362,7 @@ const Dashboard = () => {
                 diffTime = bdayThisYear.getTime() - today.getTime();
             }
             const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-            return diffDays >= 0;
+            return diffDays >= 0 && diffDays <= 30;
         }).map(u => {
             const dobDate = new Date(u.dob);
             const bdayThisYear = new Date(today.getFullYear(), dobDate.getMonth(), dobDate.getDate());
@@ -365,7 +378,6 @@ const Dashboard = () => {
     };
 
     const upcomingBirthdays = getUpcomingBirthdays();
-
 
     return (
         <div>
@@ -465,7 +477,7 @@ const Dashboard = () => {
                         </div>
                         <div style={{ marginTop: '16px', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '8px' }}>
                             <span className="live-dot-green"></span>
-                            <span style={{ fontSize: '13px', color: '#27ae60', fontWeight: 600 }}>Socket connected → 192.168.0.107:8080</span>
+                            <span style={{ fontSize: '13px', color: '#27ae60', fontWeight: 600 }}>Socket connected → {backendHost}:8080</span>
                         </div >
                     </div >
                 ) : (
@@ -537,8 +549,8 @@ const Dashboard = () => {
                                 <th>Role</th>
                                 <th>In Time</th>
                                 <th>Out Time</th>
+                                <th>Estimated Hrs</th>
                                 <th>Status</th>
-                                <th>Actions</th>
                             </tr>
                         </thead>
                         <tbody id="attendanceTable">
@@ -549,7 +561,7 @@ const Dashboard = () => {
                                     <td>
                                         <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                                             {r.photo ? (
-                                                <img src={r.photo.startsWith('http') ? r.photo : `http://${backendHost}:8080${r.photo}`} alt="Face" style={{ width: '32px', height: '32px', borderRadius: '50%', objectFit: 'cover' }} />
+                                                <img src={(r.photo.startsWith('http') || r.photo.startsWith('data:')) ? r.photo : `http://${backendHost}:8080${r.photo}`} alt="Face" style={{ width: '32px', height: '32px', borderRadius: '50%', objectFit: 'cover' }} />
                                             ) : (
                                                 <div className="avatar" style={{ background: '#bdc3c7' }}>{r.name.charAt(0)}</div>
                                             )}
@@ -559,10 +571,8 @@ const Dashboard = () => {
                                     <td style={{ textTransform: 'capitalize' }}>{r.role}</td>
                                     <td>{r.inTime}</td>
                                     <td>{r.outTime}</td>
+                                    <td>{getEstimatedHrs(r)}</td>
                                     <td><span className="status present">{r.status}</span></td>
-                                    <td>
-                                        <button onClick={() => setEditAttendance({ userId: r.userId || r.id, inTime: r.inTime, outTime: r.outTime, name: r.name })} style={{ background: 'transparent', border: 'none', cursor: 'pointer', fontSize: '16px' }}>✎</button>
-                                    </td>
                                 </tr>
                             ))}
                         </tbody>
@@ -628,7 +638,7 @@ const Dashboard = () => {
 
                         {upcomingBirthdays.length === 0 ? (
                             <div style={{ padding: '20px', textAlign: 'center', color: '#888', fontSize: '13px' }}>
-                                No birthdays found for any registered students.
+                                No birthdays in the next 30 days.
                             </div>
                         ) : (
                             <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
@@ -643,9 +653,7 @@ const Dashboard = () => {
                                                 {u.diffDays === 0 ? '🎂 TODAY! Turning ' + u.age : `In ${u.diffDays} days (${new Date(u.dob).toLocaleDateString('en-GB', { month: 'short', day: 'numeric' })})`} • <span style={{ textTransform: 'capitalize' }}>{u.role}</span>
                                             </div>
                                         </div>
-                                        <a href={`https://wa.me/91${u.studentPhone || u.parentPhone || ''}`} target="_blank" rel="noreferrer" style={{ background: '#e84393', border: 'none', color: 'white', padding: '6px 10px', borderRadius: '6px', fontSize: '11px', cursor: 'pointer', fontWeight: 'bold', textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
-                                            ✉️ {u.studentPhone || u.parentPhone ? (u.studentPhone || u.parentPhone) : 'Wish'}
-                                        </a>
+                                        <button style={{ background: '#e84393', border: 'none', color: 'white', padding: '6px 10px', borderRadius: '6px', fontSize: '11px', cursor: 'pointer', fontWeight: 'bold' }}>Wish</button>
                                     </div>
                                 ))}
                             </div>
@@ -702,42 +710,6 @@ const Dashboard = () => {
                     </div>
                 </div>
             </div>
-
-            {/* Edit Attendance Modal */}
-            {editAttendance && (
-                <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 1000 }}>
-                    <div style={{ background: 'white', padding: '30px', borderRadius: '12px', width: '400px' }}>
-                        <h3 style={{ marginTop: 0 }}>Edit Attendance for {editAttendance.name}</h3>
-
-                        <div style={{ marginBottom: '15px' }}>
-                            <label style={{ display: 'block', marginBottom: '5px' }}>In Time</label>
-                            <input
-                                type="text"
-                                value={editAttendance.inTime}
-                                onChange={(e) => setEditAttendance({ ...editAttendance, inTime: e.target.value })}
-                                placeholder="e.g. 09:30 AM"
-                                style={{ width: '100%', padding: '8px', borderRadius: '4px', border: '1px solid #ccc' }}
-                            />
-                        </div>
-
-                        <div style={{ marginBottom: '20px' }}>
-                            <label style={{ display: 'block', marginBottom: '5px' }}>Out Time</label>
-                            <input
-                                type="text"
-                                value={editAttendance.outTime}
-                                onChange={(e) => setEditAttendance({ ...editAttendance, outTime: e.target.value })}
-                                placeholder="e.g. 05:30 PM"
-                                style={{ width: '100%', padding: '8px', borderRadius: '4px', border: '1px solid #ccc' }}
-                            />
-                        </div>
-
-                        <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
-                            <button onClick={() => setEditAttendance(null)} className="btn" style={{ background: '#eee', color: '#333' }}>Cancel</button>
-                            <button onClick={handleSaveAttendance} className="btn btn-primary">Save Changes</button>
-                        </div>
-                    </div>
-                </div>
-            )}
         </div >
     );
 };
@@ -757,13 +729,7 @@ const AttendancePage = () => {
     }, []);
 
     const getInitials = (name) => name ? name.split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2) : '??';
-    const resolvedName = (punch) => {
-        const pId = String(punch.userId).trim();
-        for (const [key, name] of Object.entries(userMap)) {
-            if (key.trim() === pId) return name;
-        }
-        return punch.userName || `User ${punch.userId}`;
-    };
+    const resolvedName = (punch) => punch.userName || userMap[String(punch.userId)] || `User ${punch.userId}`;
 
     return (
         <div className="dashboard-card">
@@ -845,6 +811,87 @@ const NewEnquiryPage = () => {
     return (
         <div style={{ height: 'calc(100vh - 100px)', width: '100%', padding: '0px' }}>
             <iframe src="/enrollment.html" style={{ width: '100%', height: '100%', border: 'none', borderRadius: '12px' }} title="New Enquiry"></iframe>
+        </div>
+    );
+};
+
+const BulkUploadPage = () => {
+    const [bulkFile, setBulkFile] = useState(null);
+    const [successMessage, setSuccessMessage] = useState("");
+
+    const handleFileChange = (e) => {
+        if (e.target.files.length > 0) setBulkFile(e.target.files[0]);
+    };
+
+    const handleLoadData = () => {
+        if (!bulkFile) return alert("Please choose an Excel file first.");
+        const reader = new FileReader();
+        reader.onload = async (e) => {
+            try {
+                const data = new Uint8Array(e.target.result);
+                const workbook = XLSX.read(data, { type: 'array' });
+                const sheetName = workbook.SheetNames[0];
+                const worksheet = workbook.Sheets[sheetName];
+                const json = XLSX.utils.sheet_to_json(worksheet);
+
+                if (json.length === 0) return alert("Excel file is empty");
+
+                let successCount = 0;
+                for (let row of json) {
+                    try {
+                        await api.post('/users/enroll', {
+                            name: row.Name || row.name || 'Unknown',
+                            email: row.Email || row.email || '',
+                            fingerprint_id: row.BiometricId || row.RegisterNo || row['Register No'] || String(Date.now()).slice(-6),
+                            role: 'student',
+                            studentContact: row.Phone || row.phone || row['Mobile'] || '',
+                            course: row.Course || row.course || row['Class'] || ''
+                        });
+                        successCount++;
+                    } catch (err) {
+                        console.error("Failed to enroll row", row, err);
+                    }
+                }
+                setSuccessMessage(`Successfully enrolled ${successCount} out of ${json.length} students.`);
+                alert(`Successfully enrolled ${successCount} students.`);
+            } catch (error) {
+                console.error(error);
+                alert("Error parsing Excel file. Ensure it is a valid .xlsx file.");
+            }
+        };
+        reader.readAsArrayBuffer(bulkFile);
+    };
+
+    return (
+        <div className="dashboard-card">
+            <div className="card-header">
+                <h2>📁 Student Bulk Upload</h2>
+            </div>
+            <div style={{ marginBottom: '30px', background: '#fff', padding: '20px', borderRadius: '8px', border: '1px solid #e0e0e0' }}>
+                <h3 style={{ fontSize: '18px', color: '#3b3b58', marginBottom: '15px', marginTop: 0 }}>Upload Excel File</h3>
+                {successMessage && <div style={{ padding: '10px', background: '#d4edda', color: '#155724', marginBottom: '15px', borderRadius: '4px' }}>{successMessage}</div>}
+                <div style={{ display: 'flex', gap: '15px', alignItems: 'center', flexWrap: 'wrap' }}>
+                    <div style={{ position: 'relative', flex: '1', minWidth: '300px', maxWidth: '400px' }}>
+                        <label style={{ position: 'absolute', top: '-8px', left: '10px', background: 'white', padding: '0 5px', fontSize: '12px', color: '#888' }}>Excel File</label>
+                        <div style={{ display: 'flex', border: '1px solid #e0e0e0', borderRadius: '6px', overflow: 'hidden', background: '#fff' }}>
+                            <input type="file" accept=".xlsx, .xls, .csv" onChange={handleFileChange} style={{ flex: 1, padding: '10px', outline: 'none', border: 'none', background: 'transparent' }} />
+                            <a href="#" onClick={(e) => {
+                                e.preventDefault();
+                                const ws = XLSX.utils.json_to_sheet([{ Name: 'John Doe', Email: 'john@example.com', RegisterNo: '1001', Phone: '9876543210', Course: 'Math' }]);
+                                const wb = XLSX.utils.book_new();
+                                XLSX.utils.book_append_sheet(wb, ws, "Template");
+                                XLSX.writeFile(wb, "Student_Bulk_Template.xlsx");
+                            }} style={{ padding: '10px 15px', borderLeft: '1px solid #e0e0e0', color: '#8b5cf6', textDecoration: 'none', background: '#fcfcfc', display: 'flex', alignItems: 'center', justifyContent: 'center' }} title="Download Template">
+                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+                            </a>
+                        </div>
+                    </div>
+                    <button onClick={handleLoadData} style={{ display: 'flex', alignItems: 'center', gap: '8px', background: '#fff', border: '1px solid #a855f7', color: '#a855f7', padding: '10px 20px', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer', transition: 'all 0.2s ease' }} onMouseOver={(e) => { e.currentTarget.style.background = '#f3e8ff'; }} onMouseOut={(e) => { e.currentTarget.style.background = '#fff'; }}>
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
+                        Load Data
+                    </button>
+                </div>
+            </div>
         </div>
     );
 };
@@ -1092,6 +1139,7 @@ const TeachersPage = () => {
     const [showModal, setShowModal] = useState(false);
     const [showGlobalSummary, setShowGlobalSummary] = useState(false);
     const [summarySearchTerm, setSummarySearchTerm] = useState('');
+    const [editId, setEditId] = useState('');
 
     // Form State
     const [role, setRole] = useState('teacher');
@@ -1104,6 +1152,111 @@ const TeachersPage = () => {
     const [salary, setSalary] = useState('');
     const [dailySalary, setDailySalary] = useState('');
     const [profession, setProfession] = useState('');
+    const [photoData, setPhotoData] = useState(null);
+    const videoRef = useRef(null);
+    const canvasRef = useRef(null);
+    const [cameraActive, setCameraActive] = useState(false);
+
+    const startCamera = async () => {
+        try {
+            const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+            setCameraActive(true);
+            setTimeout(() => {
+                if (videoRef.current) {
+                    videoRef.current.srcObject = stream;
+                }
+            }, 100);
+        } catch (err) {
+            alert("Error accessing camera: " + err.message);
+        }
+    };
+
+    const stopCamera = () => {
+        if (videoRef.current && videoRef.current.srcObject) {
+            videoRef.current.srcObject.getTracks().forEach(track => track.stop());
+        }
+        setCameraActive(false);
+    };
+
+    const capturePhoto = () => {
+        if (videoRef.current && canvasRef.current) {
+            const context = canvasRef.current.getContext('2d');
+            canvasRef.current.width = videoRef.current.videoWidth;
+            canvasRef.current.height = videoRef.current.videoHeight;
+            context.drawImage(videoRef.current, 0, 0);
+            const dataUrl = canvasRef.current.toDataURL('image/jpeg');
+            setPhotoData(dataUrl);
+            stopCamera();
+        }
+    };
+
+    const handleFileUpload = (e) => {
+        const file = e.target.files[0];
+        if (file) {
+            const reader = new FileReader();
+            reader.onload = (event) => {
+                setPhotoData(event.target.result);
+            };
+            reader.readAsDataURL(file);
+        }
+    };
+
+    const [startHour, setStartHour] = useState('09');
+    const [startMin, setStartMin] = useState('00');
+    const [startAmpm, setStartAmpm] = useState('AM');
+    const [endHour, setEndHour] = useState('06');
+    const [endMin, setEndMin] = useState('00');
+    const [endAmpm, setEndAmpm] = useState('PM');
+
+    const [phone, setPhone] = useState('');
+    const [aadhar, setAadhar] = useState('');
+    const [gender, setGender] = useState('Male');
+
+    const parseTiming = (timingStr) => {
+        const defaults = {
+            startHour: '09',
+            startMin: '00',
+            startAmpm: 'AM',
+            endHour: '06',
+            endMin: '00',
+            endAmpm: 'PM'
+        };
+        if (!timingStr) return defaults;
+        const match = timingStr.match(/(\d{1,2})(?::(\d{2}))?\s*(AM|PM)\s*-\s*(\d{1,2})(?::(\d{2}))?\s*(AM|PM)/i);
+        if (match) {
+            return {
+                startHour: match[1].padStart(2, '0'),
+                startMin: match[2] || '00',
+                startAmpm: match[3].toUpperCase(),
+                endHour: match[4].padStart(2, '0'),
+                endMin: match[5] || '00',
+                endAmpm: match[6].toUpperCase()
+            };
+        }
+        return defaults;
+    };
+
+    const calculateWorkingHours = (sh, sm, sa, eh, em, ea) => {
+        let startH = parseInt(sh, 10);
+        const startM = parseInt(sm, 10);
+        let endH = parseInt(eh, 10);
+        const endM = parseInt(em, 10);
+
+        if (sa === 'PM' && startH !== 12) startH += 12;
+        if (sa === 'AM' && startH === 12) startH = 0;
+
+        if (ea === 'PM' && endH !== 12) endH += 12;
+        if (ea === 'AM' && endH === 12) endH = 0;
+
+        let startTotalMins = startH * 60 + startM;
+        let endTotalMins = endH * 60 + endM;
+
+        if (endTotalMins < startTotalMins) {
+            endTotalMins += 24 * 60;
+        }
+
+        return (endTotalMins - startTotalMins) / 60;
+    };
     const [batch, setBatch] = useState('11th PCMB');
     const [otherBatch, setOtherBatch] = useState('');
 
@@ -1115,18 +1268,88 @@ const TeachersPage = () => {
 
     useEffect(() => {
         fetchTeachers();
+        const handleLivePunch = () => {
+            fetchTeachers();
+        };
+        socket.on('live_punch', handleLivePunch);
+        return () => {
+            socket.off('live_punch', handleLivePunch);
+        };
     }, []);
 
     const handleSubmit = async (e) => {
         e.preventDefault();
         const finalBatch = batch === 'Other' ? otherBatch : batch;
+        const workingHours = calculateWorkingHours(startHour, startMin, startAmpm, endHour, endMin, endAmpm);
+        const finalTiming = `${startHour}:${startMin} ${startAmpm} - ${endHour}:${endMin} ${endAmpm} (${workingHours.toFixed(1)} hrs)`;
         try {
-            await api.post('/users/enroll', { name, email, role, fingerprint_id: fingerprintId, experience, subject, timing, salary, profession, batch: finalBatch });
+            const payload = {
+                name,
+                email,
+                role,
+                fingerprint_id: fingerprintId,
+                experience,
+                subject,
+                timing: finalTiming,
+                salary: role === 'teacher' ? salary : 0,
+                profession,
+                batch: finalBatch,
+                studentContact: phone,
+                aadhar,
+                gender,
+                photo: photoData
+            };
+            if (editId) {
+                await api.put(`/users/${editId}`, payload);
+            } else {
+                await api.post('/users/enroll', payload);
+            }
             setShowModal(false);
-            setName(''); setEmail(''); setFingerprintId(''); setExperience(''); setSubject(''); setTiming(''); setSalary(''); setDailySalary(''); setProfession(''); setBatch('11th PCMB'); setOtherBatch('');
+            stopCamera();
+            setName(''); setEmail(''); setFingerprintId(''); setExperience(''); setSubject(''); setTiming(''); setSalary(''); setDailySalary(''); setProfession(''); setBatch('11th PCMB'); setOtherBatch(''); setPhotoData(null);
+            setStartHour('09'); setStartMin('00'); setStartAmpm('AM'); setEndHour('06'); setEndMin('00'); setEndAmpm('PM');
+            setPhone(''); setAadhar(''); setGender('Male');
             fetchTeachers();
         } catch (err) {
-            alert("Error adding " + role + ": " + (err.response?.data?.error || err.message));
+            alert("Error saving " + role + ": " + (err.response?.data?.error || err.message));
+        }
+    };
+
+    const handleEdit = (t) => {
+        setEditId(t.id);
+        setRole(t.role || 'teacher');
+        setName(t.name || '');
+        setEmail(t.email || '');
+        setFingerprintId(t.fingerprint_id || t.id || '');
+        setExperience(t.experience || '');
+        setSubject(t.subject || '');
+        setTiming(t.timing || '');
+        const parsed = parseTiming(t.timing || '');
+        setStartHour(parsed.startHour);
+        setStartMin(parsed.startMin);
+        setStartAmpm(parsed.startAmpm);
+        setEndHour(parsed.endHour);
+        setEndMin(parsed.endMin);
+        setEndAmpm(parsed.endAmpm);
+        setSalary(t.salary || '');
+        setDailySalary(t.salary ? (t.salary / 30).toFixed(2) : '');
+        setProfession(t.profession || '');
+        setPhone(t.studentPhone || '');
+        setAadhar(t.aadhar || '');
+        setGender(t.gender || 'Male');
+        setBatch(t.batch || '11th PCMB');
+        setPhotoData(t.photo || null);
+        setShowModal(true);
+    };
+
+    const handleDelete = async (id, name) => {
+        if (window.confirm(`Are you sure you want to delete ${name}?`)) {
+            try {
+                await api.delete(`/users/${id}`);
+                fetchTeachers();
+            } catch (err) {
+                alert("Error deleting: " + (err.response?.data?.error || err.message));
+            }
         }
     };
 
@@ -1188,150 +1411,377 @@ const TeachersPage = () => {
                 <h2>👨‍🏫 Teachers & Staff Panel</h2>
                 <div className="actions">
                     <button className="btn btn-info" style={{ marginRight: '10px', background: '#3498db', color: '#fff', border: 'none' }} onClick={() => setShowGlobalSummary(true)}>📊 All Summary</button>
-                    <button className="btn btn-primary" onClick={() => setShowModal(true)}>Add Teacher/Staff</button>
-                    <button className="btn btn-warning">Run Payroll</button>
+                    <button className="btn btn-primary" onClick={() => {
+                        setEditId(null);
+                        setName(''); setEmail(''); setFingerprintId(''); setExperience(''); setSubject(''); setTiming(''); setSalary(''); setDailySalary(''); setProfession(''); setBatch('11th PCMB'); setOtherBatch('');
+                        setStartHour('09'); setStartMin('00'); setStartAmpm('AM'); setEndHour('06'); setEndMin('00'); setEndAmpm('PM');
+                        setPhone(''); setAadhar(''); setGender('Male'); setPhotoData(null);
+                        setShowModal(true);
+                    }}>Add Teacher/Staff</button>
                 </div>
             </div>
-            <table className="dashboard-table">
+            <div style={{ overflowX: 'auto', width: '100%' }}>
+                <table className="dashboard-table">
                 <thead>
-                    <tr>
+                    <tr style={{ whiteSpace: 'nowrap' }}>
                         <th>Name</th>
                         <th>Role</th>
                         <th>Subject/Profession</th>
-                        <th>Today's Status</th>
                         <th>In Time</th>
                         <th>Out Time</th>
-                        <th>Working Hours</th>
+                        <th>Estimated Hrs</th>
                         <th>Base Salary</th>
-                        <th>Today's Pay</th>
+                        <th>Biometric ID</th>
+                        <th>Payroll</th>
                         <th>Actions</th>
-                    </tr>
-                </thead>
+                    </tr >
+                </thead >
                 <tbody>
                     {teachers.map(t => (
-                        <tr key={t.id}>
-                            <td><div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}><div className="avatar">{t.name.charAt(0)}</div> {t.name}</div></td>
+                        <tr key={t.id} style={{ whiteSpace: 'nowrap' }}>
+                            <td>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                    {t.photo ? (
+                                        <img src={(t.photo.startsWith('http') || t.photo.startsWith('data:')) ? t.photo : `http://${backendHost}:8080${t.photo}`} alt="Face" style={{ width: '32px', height: '32px', borderRadius: '50%', objectFit: 'cover' }} />
+                                    ) : (
+                                        <div className="avatar">{t.name.charAt(0)}</div>
+                                    )}
+                                    <Link to={`/teacher/${t.fingerprint_id}`} style={{ fontWeight: '600', color: '#3b82f6', textDecoration: 'none' }}>
+                                        {t.name}
+                                    </Link>
+                                </div>
+                            </td>
                             <td style={{ textTransform: 'capitalize' }}>{t.role}</td>
                             <td>{t.role === 'teacher' ? `${t.subject || 'N/A'} ${t.batch ? `(${t.batch})` : ''}` : (t.profession || 'N/A')}</td>
+                            <td>{t.inTime}</td>
+                            <td>{t.outTime}</td>
+                            <td>{getEstimatedHrs(t)}</td>
+                            <td>₹ {t.salary ? t.salary.toLocaleString('en-IN') : '0'}</td>
+                            <td><code style={{ background: '#f0f2f5', padding: '4px 8px', borderRadius: '4px' }}>{t.fingerprint_id}</code></td>
                             <td>
-                                {t.status === 'Present' && <span className="badge badge-success">Present</span>}
-                                {t.status === 'Late' && <span className="badge badge-warning">Late ({t.lateMinutes}m)</span>}
-                                {t.status === 'Absent' && <span className="badge badge-danger">Absent</span>}
-                            </td>
-                            <td>
-                                {t.inTime && t.inTime !== '--:--' ? (
-                                    <span style={{ background: '#e8f8f5', color: '#16a085', padding: '3px 8px', borderRadius: '4px', fontSize: '12px', fontWeight: '600', border: '1px solid #d1f2eb' }}>
-                                        ↓ {t.inTime}
-                                    </span>
+                                {(t.role || '').toLowerCase() === 'teacher' ? (
+                                    <button className="btn btn-warning" style={{ padding: '4px 10px' }} onClick={() => setSelectedTeacher(t)}>💰 Calculate Pay</button>
                                 ) : (
-                                    <span style={{ color: '#ccc', fontSize: '12px' }}>--:--</span>
+                                    <span style={{ color: '#888', fontSize: '13px' }}>N/A (Staff)</span>
                                 )}
                             </td>
                             <td>
-                                {t.outTime && t.outTime !== '--:--' ? (
-                                    <span style={{ background: '#fdf2e9', color: '#d35400', padding: '3px 8px', borderRadius: '4px', fontSize: '12px', fontWeight: '600', border: '1px solid #fae5d3' }}>
-                                        ↑ {t.outTime}
-                                    </span>
-                                ) : (
-                                    <span style={{ color: '#ccc', fontSize: '12px' }}>--:--</span>
-                                )}
+                                <div style={{ display: 'flex', gap: '5px' }}>
+                                    <Link to={`/teacher/${t.fingerprint_id}`} className="btn btn-primary" style={{ padding: '4px 10px', fontSize: '12px', background: '#3b82f6', borderColor: '#3b82f6', textDecoration: 'none', color: 'white' }}>👁️ View</Link>
+                                    <button className="btn btn-primary" style={{ padding: '4px 10px', fontSize: '12px', background: '#6366f1', borderColor: '#6366f1' }} onClick={() => handleEdit(t)}>✏️ Edit</button>
+                                    <button className="btn btn-danger" style={{ padding: '4px 10px', fontSize: '12px' }} onClick={() => handleDelete(t.fingerprint_id || t.id, t.name)}>🗑️ Delete</button>
+                                </div>
                             </td>
-                            <td>
-                                {t.workingHours && t.workingHours !== '--' ? (
-                                    <span style={{ background: '#f4f6f7', color: '#2c3e50', padding: '3px 8px', borderRadius: '4px', fontSize: '12px', fontWeight: '600', border: '1px solid #e5e8e8', display: 'flex', alignItems: 'center', gap: '4px', width: 'fit-content' }}>
-                                        ⏱ {t.workingHours}
-                                    </span>
-                                ) : (
-                                    <span style={{ color: '#ccc', fontSize: '12px' }}>--</span>
-                                )}
-                            </td>
-                            <td>₹ {t.salary ? t.salary.toLocaleString('en-IN') : '0'} / mo</td>
-                            <td><strong style={{ color: '#27ae60' }}>₹ {t.dayPay ? Math.round(t.dayPay) : '0'}</strong></td>
-                            <td><button className="btn btn-warning" style={{ padding: '4px 10px' }} onClick={() => setSelectedTeacher(t)}>💰 Calculate Pay</button></td>
-                        </tr>
+                        </tr >
                     ))}
-                    {teachers.length === 0 && (
-                        <tr>
-                            <td colSpan="10" style={{ textAlign: 'center', padding: '20px', color: '#888' }}>No teachers or staff found.</td>
-                        </tr>
-                    )}
-                </tbody>
-            </table>
+                    {
+                        teachers.length === 0 && (
+                            <tr>
+                                <td colSpan="10" style={{ textAlign: 'center', padding: '20px', color: '#888' }}>No teachers or staff found.</td>
+                            </tr>
+                        )
+                    }
+                </tbody >
+            </table >
+            </div>
 
             {showModal && (
-                <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 999 }}>
-                    <div style={{ background: 'white', padding: '30px', borderRadius: '12px', width: '450px', boxShadow: '0 4px 20px rgba(0,0,0,0.2)' }}>
-                        <h3 style={{ marginTop: 0, marginBottom: '15px' }}>👤 Add New Member</h3>
+                <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 999, padding: '20px' }}>
+                    <div style={{ background: 'white', padding: '30px', borderRadius: '12px', width: '500px', maxHeight: '90vh', overflowY: 'auto', boxShadow: '0 4px 20px rgba(0,0,0,0.2)' }}>
+                        <h3 style={{ marginTop: 0, marginBottom: '15px' }}>{editId ? '✏️ Edit Member' : '👤 Add New Member'}</h3>
                         <form onSubmit={handleSubmit}>
                             <div style={{ display: 'flex', gap: '10px', marginBottom: '15px' }}>
-                                <label style={{ flex: 1 }}>
+                                <label style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
                                     Role:
-                                    <select value={role} onChange={e => setRole(e.target.value)} style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid #ddd', marginTop: '5px' }}>
+                                    <select value={role} onChange={e => setRole(e.target.value)} style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid #ddd', marginTop: '5px', boxSizing: 'border-box' }}>
                                         <option value="teacher">Teacher</option>
                                         <option value="staff">Staff</option>
                                     </select>
                                 </label>
-                                <label style={{ flex: 1 }}>
+                                <label style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
                                     Biometric ID: *
-                                    <input type="number" value={fingerprintId} onChange={e => setFingerprintId(e.target.value)} style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid #ddd', marginTop: '5px' }} required />
+                                    <input
+                                        type="text"
+                                        inputMode="numeric"
+                                        placeholder="Max 4 digits"
+                                        value={fingerprintId}
+                                        onChange={e => {
+                                            const val = e.target.value.replace(/\D/g, '');
+                                            if (val.length <= 4) setFingerprintId(val);
+                                        }}
+                                        style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid #ddd', marginTop: '5px', boxSizing: 'border-box' }}
+                                        required
+                                    />
                                 </label>
                             </div>
 
                             <div style={{ marginBottom: '15px' }}>
-                                <input type="text" placeholder="Full Name *" value={name} onChange={e => setName(e.target.value)} style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid #ddd' }} required />
+                                <input type="text" placeholder="Full Name *" value={name} onChange={e => setName(e.target.value)} style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid #ddd', boxSizing: 'border-box' }} required />
                             </div>
 
                             <div style={{ marginBottom: '15px' }}>
-                                <input type="email" placeholder="Email Address" value={email} onChange={e => setEmail(e.target.value)} style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid #ddd' }} />
-                            </div>
-
-                            <div style={{ background: '#f8f9fa', padding: '15px', borderRadius: '8px', marginBottom: '20px', border: '1px solid #ddd' }}>
-                                <h4 style={{ margin: '0 0 10px 0', fontSize: '13px', color: '#555', textTransform: 'uppercase' }}>Salary Information</h4>
-                                <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
-                                    <input type="number" placeholder="Monthly Salary (₹)" value={salary} onChange={e => setSalary(e.target.value)} style={{ flex: 1, padding: '10px', borderRadius: '6px', border: '1px solid #ddd' }} />
-                                    <button type="button" className="btn btn-warning" style={{ padding: '8px 15px', fontWeight: 'bold' }} onClick={() => {
-                                        if (salary && !dailySalary) setDailySalary((parseFloat(salary) / 30).toFixed(2));
-                                        else if (dailySalary && !salary) setSalary((parseFloat(dailySalary) * 30).toFixed(2));
-                                        else if (salary && dailySalary) setDailySalary((parseFloat(salary) / 30).toFixed(2)); // default overwrite daily
-                                    }}>Calculate</button>
-                                    <input type="number" placeholder="Daily Salary (₹)" value={dailySalary} onChange={e => setDailySalary(e.target.value)} style={{ flex: 1, padding: '10px', borderRadius: '6px', border: '1px solid #ddd' }} />
-                                </div>
+                                <input type="email" placeholder="Email Address" value={email} onChange={e => setEmail(e.target.value)} style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid #ddd', boxSizing: 'border-box' }} />
                             </div>
 
                             {role === 'teacher' && (
-                                <div style={{ background: '#f0f4f8', padding: '15px', borderRadius: '8px', marginBottom: '20px', border: '1px solid #d9e2ec' }}>
-                                    <h4 style={{ margin: '0 0 10px 0', fontSize: '13px', color: '#555', textTransform: 'uppercase' }}>Teacher Details</h4>
-                                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
-                                        <input type="text" placeholder="Topic / Subject" value={subject} onChange={e => setSubject(e.target.value)} style={{ padding: '10px', borderRadius: '6px', border: '1px solid #ddd' }} />
-                                        <input type="text" placeholder="Timing (e.g. 9 AM - 1 PM)" value={timing} onChange={e => setTiming(e.target.value)} style={{ padding: '10px', borderRadius: '6px', border: '1px solid #ddd' }} />
-                                        <select value={batch} onChange={e => setBatch(e.target.value)} style={{ padding: '10px', borderRadius: '6px', border: '1px solid #ddd', gridColumn: batch === 'Other' ? 'span 1' : 'span 2' }}>
-                                            <option value="11th PCMB">11th PCMB</option>
-                                            <option value="12th PCMB">12th PCMB</option>
-                                            <option value="Other">Other</option>
-                                        </select>
-                                        {batch === 'Other' && (
-                                            <input type="text" placeholder="Enter custom batch" value={otherBatch} onChange={e => setOtherBatch(e.target.value)} style={{ padding: '10px', borderRadius: '6px', border: '1px solid #ddd' }} />
-                                        )}
+                                <div style={{ background: '#f8f9fa', padding: '15px', borderRadius: '8px', marginBottom: '20px', border: '1px solid #ddd', boxSizing: 'border-box' }}>
+                                    <h4 style={{ margin: '0 0 10px 0', fontSize: '13px', color: '#555', textTransform: 'uppercase' }}>Salary Information</h4>
+                                    <div style={{ display: 'grid', gridTemplateColumns: '1fr auto 1fr', gap: '8px', alignItems: 'center', width: '100%' }}>
+                                        <input
+                                            type="text"
+                                            inputMode="numeric"
+                                            placeholder="Monthly Salary (₹)"
+                                            value={salary}
+                                            onChange={e => {
+                                                const val = e.target.value.replace(/\D/g, '');
+                                                if (val.length <= 7) setSalary(val);
+                                            }}
+                                            style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid #ddd', boxSizing: 'border-box' }}
+                                        />
+                                        <button
+                                            type="button"
+                                            className="btn btn-warning"
+                                            style={{ padding: '10px 15px', fontWeight: 'bold', border: 'none', borderRadius: '6px', cursor: 'pointer' }}
+                                            onClick={() => {
+                                                if (salary && !dailySalary) setDailySalary((parseFloat(salary) / 30).toFixed(2));
+                                                else if (dailySalary && !salary) setSalary((parseFloat(dailySalary) * 30).toFixed(2));
+                                                else if (salary && dailySalary) setDailySalary((parseFloat(salary) / 30).toFixed(2));
+                                            }}
+                                        >
+                                            Calculate
+                                        </button>
+                                        <input
+                                            type="text"
+                                            inputMode="numeric"
+                                            placeholder="Daily Salary (₹)"
+                                            value={dailySalary}
+                                            onChange={e => {
+                                                const val = e.target.value.replace(/\D/g, '');
+                                                if (val.length <= 6) setDailySalary(val);
+                                            }}
+                                            style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid #ddd', boxSizing: 'border-box' }}
+                                        />
                                     </div>
                                 </div>
+                            )}
+
+                            {role === 'teacher' && (
+                                <>
+                                    <div style={{ background: '#f0f4f8', padding: '15px', borderRadius: '8px', marginBottom: '20px', border: '1px solid #d9e2ec', boxSizing: 'border-box' }}>
+                                        <h4 style={{ margin: '0 0 10px 0', fontSize: '13px', color: '#555', textTransform: 'uppercase' }}>Teacher Details</h4>
+                                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                                            <input type="text" placeholder="Topic / Subject" value={subject} onChange={e => setSubject(e.target.value)} style={{ padding: '10px', borderRadius: '6px', border: '1px solid #ddd', boxSizing: 'border-box' }} />
+                                            <select value={batch} onChange={e => setBatch(e.target.value)} style={{ padding: '10px', borderRadius: '6px', border: '1px solid #ddd', boxSizing: 'border-box' }}>
+                                                <option value="11th PCMB">11th PCMB</option>
+                                                <option value="12th PCMB">12th PCMB</option>
+                                                <option value="Other">Other</option>
+                                            </select>
+                                            {batch === 'Other' && (
+                                                <input type="text" placeholder="Enter custom batch" value={otherBatch} onChange={e => setOtherBatch(e.target.value)} style={{ padding: '10px', borderRadius: '6px', border: '1px solid #ddd', boxSizing: 'border-box', gridColumn: 'span 2' }} />
+                                            )}
+                                        </div>
+                                    </div>
+
+                                    <div style={{ background: '#f0f4f8', padding: '15px', borderRadius: '8px', marginBottom: '20px', border: '1px solid #d9e2ec', boxSizing: 'border-box' }}>
+                                        <h4 style={{ margin: '0 0 12px 0', fontSize: '13px', color: '#555', textTransform: 'uppercase' }}>Teacher Shift Timing</h4>
+                                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px', marginBottom: '10px' }}>
+                                            <div>
+                                                <label style={{ fontSize: '11px', color: '#666', fontWeight: 'bold', display: 'block', marginBottom: '4px' }}>Start Time:</label>
+                                                <div style={{ display: 'flex', gap: '4px' }}>
+                                                    <select value={startHour} onChange={e => setStartHour(e.target.value)} style={{ flex: 1.2, padding: '8px', borderRadius: '6px', border: '1px solid #ddd', boxSizing: 'border-box', fontSize: '13px' }}>
+                                                        {Array.from({ length: 12 }, (_, i) => String(i + 1).padStart(2, '0')).map(h => (
+                                                            <option key={h} value={h}>{h}</option>
+                                                        ))}
+                                                    </select>
+                                                    <select value={startMin} onChange={e => setStartMin(e.target.value)} style={{ flex: 1.2, padding: '8px', borderRadius: '6px', border: '1px solid #ddd', boxSizing: 'border-box', fontSize: '13px' }}>
+                                                        {['00', '05', '10', '15', '20', '25', '30', '35', '40', '45', '50', '55'].map(m => (
+                                                            <option key={m} value={m}>{m}</option>
+                                                        ))}
+                                                    </select>
+                                                    <select value={startAmpm} onChange={e => setStartAmpm(e.target.value)} style={{ flex: 1, padding: '8px', borderRadius: '6px', border: '1px solid #ddd', boxSizing: 'border-box', fontSize: '13px', minWidth: '55px' }}>
+                                                        <option value="AM">AM</option>
+                                                        <option value="PM">PM</option>
+                                                    </select>
+                                                </div>
+                                            </div>
+                                            <div>
+                                                <label style={{ fontSize: '11px', color: '#666', fontWeight: 'bold', display: 'block', marginBottom: '4px' }}>End Time:</label>
+                                                <div style={{ display: 'flex', gap: '4px' }}>
+                                                    <select value={endHour} onChange={e => setEndHour(e.target.value)} style={{ flex: 1.2, padding: '8px', borderRadius: '6px', border: '1px solid #ddd', boxSizing: 'border-box', fontSize: '13px' }}>
+                                                        {Array.from({ length: 12 }, (_, i) => String(i + 1).padStart(2, '0')).map(h => (
+                                                            <option key={h} value={h}>{h}</option>
+                                                        ))}
+                                                    </select>
+                                                    <select value={endMin} onChange={e => setEndMin(e.target.value)} style={{ flex: 1.2, padding: '8px', borderRadius: '6px', border: '1px solid #ddd', boxSizing: 'border-box', fontSize: '13px' }}>
+                                                        {['00', '05', '10', '15', '20', '25', '30', '35', '40', '45', '50', '55'].map(m => (
+                                                            <option key={m} value={m}>{m}</option>
+                                                        ))}
+                                                    </select>
+                                                    <select value={endAmpm} onChange={e => setEndAmpm(e.target.value)} style={{ flex: 1, padding: '8px', borderRadius: '6px', border: '1px solid #ddd', boxSizing: 'border-box', fontSize: '13px', minWidth: '55px' }}>
+                                                        <option value="AM">AM</option>
+                                                        <option value="PM">PM</option>
+                                                    </select>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div style={{ marginTop: '12px', fontSize: '12px', color: '#2c3e50', fontWeight: '600', display: 'flex', alignItems: 'center', gap: '6px', background: '#eef2f7', padding: '8px 12px', borderRadius: '6px' }}>
+                                            <span>🕒 Total Shift Duration:</span>
+                                            <span style={{ background: '#3498db', color: 'white', padding: '2px 8px', borderRadius: '12px', fontSize: '11px', fontWeight: 'bold' }}>
+                                                {calculateWorkingHours(startHour, startMin, startAmpm, endHour, endMin, endAmpm).toFixed(1)} Hours
+                                            </span>
+                                        </div>
+                                    </div>
+                                </>
                             )}
 
                             {role === 'staff' && (
-                                <div style={{ background: '#f8f9fa', padding: '15px', borderRadius: '8px', marginBottom: '20px', border: '1px solid #eee' }}>
-                                    <h4 style={{ margin: '0 0 10px 0', fontSize: '13px', color: '#555', textTransform: 'uppercase' }}>Staff Details</h4>
-                                    <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '10px' }}>
-                                        <input type="text" placeholder="Profession (e.g. Receptionist, Security)" value={profession} onChange={e => setProfession(e.target.value)} style={{ padding: '10px', borderRadius: '6px', border: '1px solid #ddd' }} />
+                                <>
+                                    <div style={{ background: '#f8f9fa', padding: '15px', borderRadius: '8px', marginBottom: '20px', border: '1px solid #ddd', boxSizing: 'border-box' }}>
+                                        <h4 style={{ margin: '0 0 12px 0', fontSize: '13px', color: '#555', textTransform: 'uppercase' }}>Staff Details</h4>
+                                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                                            <div style={{ gridColumn: 'span 2' }}>
+                                                <input type="text" placeholder="Profession (e.g. Receptionist, Security)" value={profession} onChange={e => setProfession(e.target.value)} style={{ padding: '10px', borderRadius: '6px', border: '1px solid #ddd', boxSizing: 'border-box', width: '100%' }} />
+                                            </div>
+                                            <div>
+                                                <input
+                                                    type="text"
+                                                    inputMode="numeric"
+                                                    placeholder="Contact Number"
+                                                    value={phone}
+                                                    onChange={e => {
+                                                        const val = e.target.value.replace(/\D/g, '');
+                                                        if (val.length <= 10) setPhone(val);
+                                                    }}
+                                                    style={{ padding: '10px', borderRadius: '6px', border: '1px solid #ddd', boxSizing: 'border-box', width: '100%' }}
+                                                />
+                                            </div>
+                                            <div>
+                                                <input
+                                                    type="text"
+                                                    inputMode="numeric"
+                                                    placeholder="Aadhar Card No. (12 digits)"
+                                                    value={aadhar}
+                                                    onChange={e => {
+                                                        const val = e.target.value.replace(/\D/g, '');
+                                                        if (val.length <= 12) setAadhar(val);
+                                                    }}
+                                                    style={{ padding: '10px', borderRadius: '6px', border: '1px solid #ddd', boxSizing: 'border-box', width: '100%' }}
+                                                />
+                                            </div>
+                                            <div>
+                                                <select value={gender} onChange={e => setGender(e.target.value)} style={{ padding: '10px', borderRadius: '6px', border: '1px solid #ddd', boxSizing: 'border-box', width: '100%' }}>
+                                                    <option value="Male">Male</option>
+                                                    <option value="Female">Female</option>
+                                                    <option value="Other">Other</option>
+                                                </select>
+                                            </div>
+                                            <div>
+                                                <input
+                                                    type="text"
+                                                    inputMode="numeric"
+                                                    placeholder="Experience (Years)"
+                                                    value={experience}
+                                                    onChange={e => {
+                                                        const val = e.target.value.replace(/\D/g, '');
+                                                        if (val.length <= 2) setExperience(val);
+                                                    }}
+                                                    style={{ padding: '10px', borderRadius: '6px', border: '1px solid #ddd', boxSizing: 'border-box', width: '100%' }}
+                                                />
+                                            </div>
+                                        </div>
                                     </div>
-                                </div>
+
+                                    <div style={{ background: '#f8f9fa', padding: '15px', borderRadius: '8px', marginBottom: '20px', border: '1px solid #ddd', boxSizing: 'border-box' }}>
+                                        <h4 style={{ margin: '0 0 12px 0', fontSize: '13px', color: '#555', textTransform: 'uppercase' }}>Staff Shift Timing</h4>
+                                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px', marginBottom: '10px' }}>
+                                            <div>
+                                                <label style={{ fontSize: '11px', color: '#666', fontWeight: 'bold', display: 'block', marginBottom: '4px' }}>Start Time:</label>
+                                                <div style={{ display: 'flex', gap: '4px' }}>
+                                                    <select value={startHour} onChange={e => setStartHour(e.target.value)} style={{ flex: 1.2, padding: '8px', borderRadius: '6px', border: '1px solid #ddd', boxSizing: 'border-box', fontSize: '13px' }}>
+                                                        {Array.from({ length: 12 }, (_, i) => String(i + 1).padStart(2, '0')).map(h => (
+                                                            <option key={h} value={h}>{h}</option>
+                                                        ))}
+                                                    </select>
+                                                    <select value={startMin} onChange={e => setStartMin(e.target.value)} style={{ flex: 1.2, padding: '8px', borderRadius: '6px', border: '1px solid #ddd', boxSizing: 'border-box', fontSize: '13px' }}>
+                                                        {['00', '05', '10', '15', '20', '25', '30', '35', '40', '45', '50', '55'].map(m => (
+                                                            <option key={m} value={m}>{m}</option>
+                                                        ))}
+                                                    </select>
+                                                    <select value={startAmpm} onChange={e => setStartAmpm(e.target.value)} style={{ flex: 1, padding: '8px', borderRadius: '6px', border: '1px solid #ddd', boxSizing: 'border-box', fontSize: '13px', minWidth: '55px' }}>
+                                                        <option value="AM">AM</option>
+                                                        <option value="PM">PM</option>
+                                                    </select>
+                                                </div>
+                                            </div>
+                                            <div>
+                                                <label style={{ fontSize: '11px', color: '#666', fontWeight: 'bold', display: 'block', marginBottom: '4px' }}>End Time:</label>
+                                                <div style={{ display: 'flex', gap: '4px' }}>
+                                                    <select value={endHour} onChange={e => setEndHour(e.target.value)} style={{ flex: 1.2, padding: '8px', borderRadius: '6px', border: '1px solid #ddd', boxSizing: 'border-box', fontSize: '13px' }}>
+                                                        {Array.from({ length: 12 }, (_, i) => String(i + 1).padStart(2, '0')).map(h => (
+                                                            <option key={h} value={h}>{h}</option>
+                                                        ))}
+                                                    </select>
+                                                    <select value={endMin} onChange={e => setEndMin(e.target.value)} style={{ flex: 1.2, padding: '8px', borderRadius: '6px', border: '1px solid #ddd', boxSizing: 'border-box', fontSize: '13px' }}>
+                                                        {['00', '05', '10', '15', '20', '25', '30', '35', '40', '45', '50', '55'].map(m => (
+                                                            <option key={m} value={m}>{m}</option>
+                                                        ))}
+                                                    </select>
+                                                    <select value={endAmpm} onChange={e => setEndAmpm(e.target.value)} style={{ flex: 1, padding: '8px', borderRadius: '6px', border: '1px solid #ddd', boxSizing: 'border-box', fontSize: '13px', minWidth: '55px' }}>
+                                                        <option value="AM">AM</option>
+                                                        <option value="PM">PM</option>
+                                                    </select>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div style={{ marginTop: '12px', fontSize: '12px', color: '#2c3e50', fontWeight: '600', display: 'flex', alignItems: 'center', gap: '6px', background: '#eef2f7', padding: '8px 12px', borderRadius: '6px' }}>
+                                            <span>🕒 Total Shift Duration:</span>
+                                            <span style={{ background: '#3498db', color: 'white', padding: '2px 8px', borderRadius: '12px', fontSize: '11px', fontWeight: 'bold' }}>
+                                                {calculateWorkingHours(startHour, startMin, startAmpm, endHour, endMin, endAmpm).toFixed(1)} Hours
+                                            </span>
+                                        </div>
+                                    </div>
+                                </>
                             )}
 
+                            <div style={{ background: '#f8f9fa', padding: '15px', borderRadius: '8px', marginBottom: '20px', border: '1px solid #ddd', boxSizing: 'border-box' }}>
+                                <h4 style={{ margin: '0 0 12px 0', fontSize: '13px', color: '#555', textTransform: 'uppercase' }}>Member Photo</h4>
+                                <div style={{ display: 'flex', gap: '20px', flexWrap: 'wrap' }}>
+                                    <div style={{ flex: 1, minWidth: '200px' }}>
+                                        <div style={{ marginBottom: '10px', fontSize: '13px', color: '#666' }}>Option 1: Upload from Computer</div>
+                                        <input type="file" accept="image/*" onChange={handleFileUpload} style={{ padding: '8px', background: 'white', border: '1px solid #ddd', borderRadius: '4px', width: '100%' }} />
+                                    </div>
+                                    <div style={{ flex: 1, minWidth: '200px' }}>
+                                        <div style={{ marginBottom: '10px', fontSize: '13px', color: '#666' }}>Option 2: Take Live Photo</div>
+                                        {!cameraActive && !photoData && (
+                                            <button type="button" onClick={startCamera} style={{ background: '#3b82f6', color: 'white', border: 'none', padding: '8px 16px', borderRadius: '4px', cursor: 'pointer' }}>📷 Start Webcam</button>
+                                        )}
+                                        {cameraActive && (
+                                            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                                                <video ref={videoRef} autoPlay style={{ width: '100%', maxWidth: '250px', borderRadius: '8px', background: '#000' }}></video>
+                                                <div style={{ display: 'flex', gap: '10px' }}>
+                                                    <button type="button" onClick={capturePhoto} style={{ background: '#10b981', color: 'white', border: 'none', padding: '8px 16px', borderRadius: '4px', cursor: 'pointer' }}>📸 Capture</button>
+                                                    <button type="button" onClick={stopCamera} style={{ background: '#ef4444', color: 'white', border: 'none', padding: '8px 16px', borderRadius: '4px', cursor: 'pointer' }}>Cancel</button>
+                                                </div>
+                                            </div>
+                                        )}
+                                        <canvas ref={canvasRef} style={{ display: 'none' }}></canvas>
+                                    </div>
+                                    {photoData && (
+                                        <div style={{ width: '120px', textAlign: 'center' }}>
+                                            <img src={photoData} alt="Preview" style={{ width: '100px', height: '100px', objectFit: 'cover', borderRadius: '8px', border: '2px solid #8b5cf6', marginBottom: '8px' }} />
+                                            <button type="button" onClick={() => setPhotoData(null)} style={{ background: '#ef4444', color: 'white', border: 'none', padding: '4px 8px', borderRadius: '4px', fontSize: '11px', cursor: 'pointer' }}>Remove</button>
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+
                             <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end', marginTop: '10px' }}>
-                                <button type="button" className="btn" style={{ background: '#eee', color: '#333' }} onClick={() => setShowModal(false)}>Cancel</button>
+                                <button type="button" className="btn" style={{ background: '#eee', color: '#333' }} onClick={() => { setShowModal(false); stopCamera(); setPhotoData(null); }}>Cancel</button>
                                 <button type="submit" className="btn btn-primary">Save Member</button>
                             </div>
-                        </form>
-                    </div>
-                </div>
+                        </form >
+                    </div >
+                </div >
             )}
 
             {/* Global Summary Modal */}
@@ -1413,120 +1863,122 @@ const TeachersPage = () => {
                 </div>
             )}
 
-            {selectedTeacher && typeof selectedTeacher === 'object' && (
-                <div style={{ marginTop: '20px', padding: '20px', background: '#f8f9fa', borderRadius: '8px', borderLeft: '5px solid #27ae60' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px' }}>
-                        <h4 style={{ margin: 0 }}>Professional Payroll Calculator: {selectedTeacher.name}</h4>
-                        <button className="btn" style={{ padding: '2px 8px', background: 'transparent', color: '#666' }} onClick={() => setSelectedTeacher(null)}>✕</button>
-                    </div>
-
-                    <div style={{ display: 'flex', gap: '30px', alignItems: 'flex-start', flexWrap: 'wrap' }}>
-                        {/* Payroll Statistics */}
-                        <div style={{ display: 'flex', gap: '20px', flex: 1, flexWrap: 'wrap', alignItems: 'center' }}>
-                            <div>
-                                <div style={{ fontSize: '12px', color: '#888' }}>Month-to-Date Pay</div>
-                                <strong style={{ fontSize: '18px', color: '#2980b9' }}>₹ {selectedTeacher.monthPay ? Math.round(selectedTeacher.monthPay).toLocaleString('en-IN') : '0'}</strong>
-                            </div>
-
-                            <div style={{ borderLeft: '1px solid #ddd', paddingLeft: '20px' }}>
-                                <div style={{ fontSize: '12px', color: '#888' }}>Today's In Time</div>
-                                <strong style={{ fontSize: '16px' }}>{selectedTeacher.inTime}</strong>
-                            </div>
-
-                            <div style={{ borderLeft: '1px solid #ddd', paddingLeft: '20px' }}>
-                                <div style={{ fontSize: '12px', color: '#888' }}>Daily Base Pay</div>
-                                <strong style={{ fontSize: '16px' }}>₹ {selectedTeacher.salary ? Math.round(selectedTeacher.salary / 30) : 0}</strong>
-                            </div>
-
-                            {selectedTeacher.status === 'Late' && (
-                                <div style={{ borderLeft: '1px solid #ddd', paddingLeft: '20px' }}>
-                                    <div style={{ fontSize: '12px', color: '#e74c3c' }}>Late Penalty (-{selectedTeacher.lateMinutes}m)</div>
-                                    <strong style={{ fontSize: '16px', color: '#e74c3c' }}>- ₹ {Math.round((selectedTeacher.salary / 30) - selectedTeacher.dayPay)}</strong>
-                                </div>
-                            )}
-
-                            <div style={{ borderLeft: '1px solid #ddd', paddingLeft: '20px' }}>
-                                <div style={{ fontSize: '12px', color: '#888' }}>Today's Final Payout</div>
-                                <strong style={{ fontSize: '20px', color: '#27ae60' }}>₹ {selectedTeacher.dayPay ? Math.round(selectedTeacher.dayPay) : 0}</strong>
-                            </div>
+            {
+                selectedTeacher && typeof selectedTeacher === 'object' && (
+                    <div style={{ marginTop: '20px', padding: '20px', background: '#f8f9fa', borderRadius: '8px', borderLeft: '5px solid #27ae60' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px' }}>
+                            <h4 style={{ margin: 0 }}>Professional Payroll Calculator: {selectedTeacher.name}</h4>
+                            <button className="btn" style={{ padding: '2px 8px', background: 'transparent', color: '#666' }} onClick={() => setSelectedTeacher(null)}>✕</button>
                         </div>
 
-                        {/* Professional Attendance Details Box */}
-                        <div style={{ background: '#fff', border: '1px solid #eaeaea', borderRadius: '8px', padding: '15px', minWidth: '280px', boxShadow: '0 2px 8px rgba(0,0,0,0.03)' }}>
-                            <div style={{ fontSize: '13px', fontWeight: 'bold', color: '#333', marginBottom: '12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                <span>Attendance Summary</span>
-                                <span style={{ color: '#27ae60', background: '#e8f8f5', padding: '3px 10px', borderRadius: '12px', fontSize: '11px', fontWeight: '600' }}>
-                                    {selectedTeacher.daysPresent || 0} Present
-                                </span>
-                            </div>
-
-                            {selectedTeacher.absentDates && selectedTeacher.absentDates.length > 0 ? (
+                        <div style={{ display: 'flex', gap: '30px', alignItems: 'flex-start', flexWrap: 'wrap' }}>
+                            {/* Payroll Statistics */}
+                            <div style={{ display: 'flex', gap: '20px', flex: 1, flexWrap: 'wrap', alignItems: 'center' }}>
                                 <div>
-                                    <div style={{ fontSize: '11px', color: '#666', marginBottom: '8px', fontWeight: '500' }}>
-                                        Absent Days ({selectedTeacher.absentDates.length}):
-                                    </div>
-                                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', maxHeight: '85px', overflowY: 'auto', paddingRight: '5px' }}>
-                                        {selectedTeacher.absentDates.map((date, i) => (
-                                            <span key={i} style={{ background: '#fdf3f2', color: '#e74c3c', padding: '4px 8px', borderRadius: '6px', fontSize: '11px', border: '1px solid #fadbd8', fontWeight: '500' }}>
-                                                {date}
-                                            </span>
-                                        ))}
-                                    </div>
+                                    <div style={{ fontSize: '12px', color: '#888' }}>Month-to-Date Pay</div>
+                                    <strong style={{ fontSize: '18px', color: '#2980b9' }}>₹ {selectedTeacher.monthPay ? Math.round(selectedTeacher.monthPay).toLocaleString('en-IN') : '0'}</strong>
                                 </div>
-                            ) : (
-                                <div style={{ fontSize: '12px', color: '#888', fontStyle: 'italic', marginTop: '10px' }}>
-                                    🌟 Perfect attendance so far!
-                                </div>
-                            )}
-                        </div>
-                    </div>
 
-                    {/* Detailed Monthly Log Section */}
-                    <div style={{ marginTop: '20px', background: '#fff', border: '1px solid #eaeaea', borderRadius: '8px', padding: '15px', boxShadow: '0 2px 8px rgba(0,0,0,0.03)' }}>
-                        <h5 style={{ margin: '0 0 15px 0', color: '#333', fontSize: '14px', borderBottom: '1px solid #eee', paddingBottom: '10px' }}>📅 Detailed Monthly Log</h5>
-                        <div style={{ maxHeight: '250px', overflowY: 'auto' }}>
-                            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px', textAlign: 'left' }}>
-                                <thead style={{ position: 'sticky', top: 0, background: '#f8f9fa', boxShadow: '0 1px 2px rgba(0,0,0,0.05)', zIndex: 1 }}>
-                                    <tr>
-                                        <th style={{ padding: '10px', borderBottom: '1px solid #ddd', color: '#666' }}>Date</th>
-                                        <th style={{ padding: '10px', borderBottom: '1px solid #ddd', color: '#666' }}>Status</th>
-                                        <th style={{ padding: '10px', borderBottom: '1px solid #ddd', color: '#666' }}>In Time</th>
-                                        <th style={{ padding: '10px', borderBottom: '1px solid #ddd', color: '#666' }}>Out Time</th>
-                                        <th style={{ padding: '10px', borderBottom: '1px solid #ddd', color: '#666' }}>Duration</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {selectedTeacher.monthlyLog && selectedTeacher.monthlyLog.length > 0 ? (
-                                        selectedTeacher.monthlyLog.map((log, idx) => (
-                                            <tr key={idx} style={{ borderBottom: '1px solid #f0f0f0' }}>
-                                                <td style={{ padding: '10px', color: '#444', fontWeight: '500' }}>{log.date}</td>
-                                                <td style={{ padding: '10px' }}>
-                                                    {log.status === 'Present' && <span style={{ background: '#e8f8f5', color: '#16a085', padding: '3px 8px', borderRadius: '4px', fontSize: '11px', fontWeight: '600' }}>Present</span>}
-                                                    {log.status === 'Absent' && <span style={{ background: '#fdf3f2', color: '#e74c3c', padding: '3px 8px', borderRadius: '4px', fontSize: '11px', fontWeight: '600' }}>Absent</span>}
-                                                    {log.status === 'Sunday' && <span style={{ background: '#fcf3cf', color: '#d4ac0d', padding: '3px 8px', borderRadius: '4px', fontSize: '11px', fontWeight: '600' }}>Sunday</span>}
-                                                    {log.status === 'Late' && <span style={{ background: '#fef5e7', color: '#e67e22', padding: '3px 8px', borderRadius: '4px', fontSize: '11px', fontWeight: '600' }}>Late</span>}
-                                                </td>
-                                                <td style={{ padding: '10px', color: '#666' }}>{log.inTime}</td>
-                                                <td style={{ padding: '10px', color: '#666' }}>{log.outTime}</td>
-                                                <td style={{ padding: '10px', color: '#666', fontWeight: '500' }}>
-                                                    {log.workingHours !== '--' ? `⏱ ${log.workingHours}` : '--'}
+                                <div style={{ borderLeft: '1px solid #ddd', paddingLeft: '20px' }}>
+                                    <div style={{ fontSize: '12px', color: '#888' }}>Today's In Time</div>
+                                    <strong style={{ fontSize: '16px' }}>{selectedTeacher.inTime}</strong>
+                                </div>
+
+                                <div style={{ borderLeft: '1px solid #ddd', paddingLeft: '20px' }}>
+                                    <div style={{ fontSize: '12px', color: '#888' }}>Daily Base Pay</div>
+                                    <strong style={{ fontSize: '16px' }}>₹ {selectedTeacher.salary ? Math.round(selectedTeacher.salary / 30) : 0}</strong>
+                                </div>
+
+                                {selectedTeacher.status === 'Late' && (
+                                    <div style={{ borderLeft: '1px solid #ddd', paddingLeft: '20px' }}>
+                                        <div style={{ fontSize: '12px', color: '#e74c3c' }}>Late Penalty (-{selectedTeacher.lateMinutes}m)</div>
+                                        <strong style={{ fontSize: '16px', color: '#e74c3c' }}>- ₹ {Math.round((selectedTeacher.salary / 30) - selectedTeacher.dayPay)}</strong>
+                                    </div>
+                                )}
+
+                                <div style={{ borderLeft: '1px solid #ddd', paddingLeft: '20px' }}>
+                                    <div style={{ fontSize: '12px', color: '#888' }}>Today's Final Payout</div>
+                                    <strong style={{ fontSize: '20px', color: '#27ae60' }}>₹ {selectedTeacher.dayPay ? Math.round(selectedTeacher.dayPay) : 0}</strong>
+                                </div>
+                            </div>
+
+                            {/* Professional Attendance Details Box */}
+                            <div style={{ background: '#fff', border: '1px solid #eaeaea', borderRadius: '8px', padding: '15px', minWidth: '280px', boxShadow: '0 2px 8px rgba(0,0,0,0.03)' }}>
+                                <div style={{ fontSize: '13px', fontWeight: 'bold', color: '#333', marginBottom: '12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                    <span>Attendance Summary</span>
+                                    <span style={{ color: '#27ae60', background: '#e8f8f5', padding: '3px 10px', borderRadius: '12px', fontSize: '11px', fontWeight: '600' }}>
+                                        {selectedTeacher.daysPresent || 0} Present
+                                    </span>
+                                </div>
+
+                                {selectedTeacher.absentDates && selectedTeacher.absentDates.length > 0 ? (
+                                    <div>
+                                        <div style={{ fontSize: '11px', color: '#666', marginBottom: '8px', fontWeight: '500' }}>
+                                            Absent Days ({selectedTeacher.absentDates.length}):
+                                        </div>
+                                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', maxHeight: '85px', overflowY: 'auto', paddingRight: '5px' }}>
+                                            {selectedTeacher.absentDates.map((date, i) => (
+                                                <span key={i} style={{ background: '#fdf3f2', color: '#e74c3c', padding: '4px 8px', borderRadius: '6px', fontSize: '11px', border: '1px solid #fadbd8', fontWeight: '500' }}>
+                                                    {date}
+                                                </span>
+                                            ))}
+                                        </div>
+                                    </div>
+                                ) : (
+                                    <div style={{ fontSize: '12px', color: '#888', fontStyle: 'italic', marginTop: '10px' }}>
+                                        🌟 Perfect attendance so far!
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+
+                        {/* Detailed Monthly Log Section */}
+                        <div style={{ marginTop: '20px', background: '#fff', border: '1px solid #eaeaea', borderRadius: '8px', padding: '15px', boxShadow: '0 2px 8px rgba(0,0,0,0.03)' }}>
+                            <h5 style={{ margin: '0 0 15px 0', color: '#333', fontSize: '14px', borderBottom: '1px solid #eee', paddingBottom: '10px' }}>📅 Detailed Monthly Log</h5>
+                            <div style={{ maxHeight: '250px', overflowY: 'auto' }}>
+                                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px', textAlign: 'left' }}>
+                                    <thead style={{ position: 'sticky', top: 0, background: '#f8f9fa', boxShadow: '0 1px 2px rgba(0,0,0,0.05)', zIndex: 1 }}>
+                                        <tr>
+                                            <th style={{ padding: '10px', borderBottom: '1px solid #ddd', color: '#666' }}>Date</th>
+                                            <th style={{ padding: '10px', borderBottom: '1px solid #ddd', color: '#666' }}>Status</th>
+                                            <th style={{ padding: '10px', borderBottom: '1px solid #ddd', color: '#666' }}>In Time</th>
+                                            <th style={{ padding: '10px', borderBottom: '1px solid #ddd', color: '#666' }}>Out Time</th>
+                                            <th style={{ padding: '10px', borderBottom: '1px solid #ddd', color: '#666' }}>Duration</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {selectedTeacher.monthlyLog && selectedTeacher.monthlyLog.length > 0 ? (
+                                            selectedTeacher.monthlyLog.map((log, idx) => (
+                                                <tr key={idx} style={{ borderBottom: '1px solid #f0f0f0' }}>
+                                                    <td style={{ padding: '10px', color: '#444', fontWeight: '500' }}>{log.date}</td>
+                                                    <td style={{ padding: '10px' }}>
+                                                        {log.status === 'Present' && <span style={{ background: '#e8f8f5', color: '#16a085', padding: '3px 8px', borderRadius: '4px', fontSize: '11px', fontWeight: '600' }}>Present</span>}
+                                                        {log.status === 'Absent' && <span style={{ background: '#fdf3f2', color: '#e74c3c', padding: '3px 8px', borderRadius: '4px', fontSize: '11px', fontWeight: '600' }}>Absent</span>}
+                                                        {log.status === 'Sunday' && <span style={{ background: '#fcf3cf', color: '#d4ac0d', padding: '3px 8px', borderRadius: '4px', fontSize: '11px', fontWeight: '600' }}>Sunday</span>}
+                                                        {log.status === 'Late' && <span style={{ background: '#fef5e7', color: '#e67e22', padding: '3px 8px', borderRadius: '4px', fontSize: '11px', fontWeight: '600' }}>Late</span>}
+                                                    </td>
+                                                    <td style={{ padding: '10px', color: '#666' }}>{log.inTime}</td>
+                                                    <td style={{ padding: '10px', color: '#666' }}>{log.outTime}</td>
+                                                    <td style={{ padding: '10px', color: '#666', fontWeight: '500' }}>
+                                                        {log.workingHours !== '--' ? `⏱ ${log.workingHours}` : '--'}
+                                                    </td>
+                                                </tr>
+                                            ))
+                                        ) : (
+                                            <tr>
+                                                <td colSpan="5" style={{ padding: '20px', textAlign: 'center', color: '#888', fontStyle: 'italic' }}>
+                                                    No attendance logs available for this month yet.
                                                 </td>
                                             </tr>
-                                        ))
-                                    ) : (
-                                        <tr>
-                                            <td colSpan="5" style={{ padding: '20px', textAlign: 'center', color: '#888', fontStyle: 'italic' }}>
-                                                No attendance logs available for this month yet.
-                                            </td>
-                                        </tr>
-                                    )}
-                                </tbody>
-                            </table>
+                                        )}
+                                    </tbody>
+                                </table>
+                            </div>
                         </div>
                     </div>
-                </div>
-            )}
-        </div>
+                )
+            }
+        </div >
     );
 };
 
@@ -1573,7 +2025,7 @@ const Simulator = () => {
 const EnrollStudentPage = () => {
     const [step, setStep] = useState(1);
     const [formData, setFormData] = useState({
-        name: '', aadhar: '', enquiryDate: new Date().toISOString().split('T')[0], gender: 'Male', dob: '', email: '', fingerprint_id: '', address: '',
+        name: '', fatherName: '', motherName: '', aadhar: '', enquiryDate: new Date().toISOString().split('T')[0], gender: 'Male', dob: '', email: '', fingerprint_id: '', address: '',
         fatherContact: '', motherContact: '', studentContact: '',
         branch: '', course: '', batchTiming: '',
         previousSchool: '', tenthPercent: '', twelfthPercent: '',
@@ -1663,7 +2115,71 @@ const EnrollStudentPage = () => {
     const dueFees = Math.max(0, netFee - receivedNum);
     const amountWords = receivedNum ? numberToWords(receivedNum) : 'Zero';
 
+    const step1Keys = ['name', 'fatherName', 'motherName', 'aadhar', 'enquiryDate', 'gender', 'dob', 'email', 'fingerprint_id', 'address', 'fatherContact', 'motherContact', 'studentContact'];
+    const step2Keys = ['branch', 'course', 'batchTiming'];
+    const step3Keys = ['previousSchool', 'tenthPercent', 'twelfthPercent'];
+    const step4Keys = ['bankName', 'accountNumber', 'ifscCode', 'accountHolder', 'amountReceived', 'paymentMode', 'installment', 'totalFee'];
+
+    const friendlyNames = {
+        name: "Student Name", fatherName: "Father's Name", motherName: "Mother's Name", aadhar: "Aadhar Number", enquiryDate: "Enquiry Date", gender: "Gender", dob: "Date of Birth", email: "Email", fingerprint_id: "Biometric Registration No.", address: "Address", fatherContact: "Father Contact", motherContact: "Mother Contact", studentContact: "Student Contact",
+        branch: "Branch", course: "Course", batchTiming: "Batch Timing", previousSchool: "Previous School", tenthPercent: "10th Percentage", twelfthPercent: "12th Percentage",
+        bankName: "Bank Name", accountNumber: "Account Number", ifscCode: "IFSC Code", accountHolder: "Account Holder", amountReceived: "Amount Received", paymentMode: "Payment Mode", installment: "Installment", totalFee: "Total Fee"
+    };
+
+    const validateStep = (stepToValidate) => {
+        let keysToCheck = [];
+        if (stepToValidate === 1) keysToCheck = step1Keys;
+        else if (stepToValidate === 2) keysToCheck = step2Keys;
+        else if (stepToValidate === 3) keysToCheck = step3Keys;
+        else if (stepToValidate === 4) keysToCheck = step4Keys;
+
+        for (const key of keysToCheck) {
+            if (typeof formData[key] === 'string' && formData[key].trim() === '') {
+                alert(`Please fill out all fields in this step before proceeding. Missing: ${friendlyNames[key] || key}`);
+                return false;
+            }
+        }
+
+        if (stepToValidate === 1) {
+            if (formData.studentContact === formData.fatherContact) {
+                alert("Student Contact Number and Father's Contact Number must be different.");
+                return false;
+            }
+            if (formData.studentContact === formData.motherContact) {
+                alert("Student Contact Number and Mother's Contact Number must be different.");
+                return false;
+            }
+        }
+
+        return true;
+    };
+
+    const handleNextStep = () => {
+        if (!validateStep(step)) return;
+        setStep(step + 1);
+    };
+
+    const handleStepClick = (targetStep) => {
+        if (targetStep > step) {
+            for (let i = step; i < targetStep; i++) {
+                if (!validateStep(i)) {
+                    setStep(i);
+                    return;
+                }
+            }
+        }
+        setStep(targetStep);
+    };
+
     const handleSubmit = async () => {
+        // Final sanity check
+        for (let i = 1; i <= 4; i++) {
+            if (!validateStep(i)) {
+                setStep(i);
+                return;
+            }
+        }
+
         setLoading(true);
         try {
             let receiptNo = null;
@@ -1717,7 +2233,7 @@ const EnrollStudentPage = () => {
                     { id: 3, title: 'Academic Details', desc: 'Setup Academic Details' },
                     { id: 4, title: 'Banking Details', desc: 'Setup Banking Details' }
                 ].map((s) => (
-                    <div key={s.id} onClick={() => setStep(s.id)} style={{ textAlign: 'center', position: 'relative', zIndex: 2, background: 'white', padding: '0 10px', flex: 1, cursor: 'pointer' }}>
+                    <div key={s.id} onClick={() => handleStepClick(s.id)} style={{ textAlign: 'center', position: 'relative', zIndex: 2, background: 'white', padding: '0 10px', flex: 1, cursor: 'pointer' }}>
                         <div style={{
                             width: step === s.id ? '20px' : '24px',
                             height: step === s.id ? '20px' : '24px',
@@ -1743,7 +2259,13 @@ const EnrollStudentPage = () => {
                             <input type="text" name="name" value={formData.name} onChange={handleInput} placeholder="Student Name*" style={{ width: '100%', padding: '14px', border: '1px solid #e0e0e0', borderRadius: '6px', outline: 'none', color: '#555' }} />
                         </div>
                         <div>
-                            <input type="text" name="aadhar" value={formData.aadhar} onInput={(e) => { e.target.value = e.target.value.replace(/\D/g, '').slice(0, 12); handleInput(e); }} placeholder="Aadhar Number" style={{ width: '100%', padding: '14px', border: '1px solid #e0e0e0', borderRadius: '6px', outline: 'none' }} />
+                            <input type="text" name="fatherName" value={formData.fatherName} onChange={handleInput} placeholder="Father's Name*" style={{ width: '100%', padding: '14px', border: '1px solid #e0e0e0', borderRadius: '6px', outline: 'none', color: '#555' }} />
+                        </div>
+                        <div>
+                            <input type="text" name="motherName" value={formData.motherName} onChange={handleInput} placeholder="Mother's Name*" style={{ width: '100%', padding: '14px', border: '1px solid #e0e0e0', borderRadius: '6px', outline: 'none', color: '#555' }} />
+                        </div>
+                        <div>
+                            <input type="text" name="aadhar" value={formData.aadhar} onInput={(e) => { e.target.value = e.target.value.replace(/\D/g, '').slice(0, 12); handleInput(e); }} placeholder="Aadhar Number*" style={{ width: '100%', padding: '14px', border: '1px solid #e0e0e0', borderRadius: '6px', outline: 'none' }} />
                         </div>
                         <div style={{ position: 'relative' }}>
                             <label style={{ position: 'absolute', top: '-8px', left: '10px', background: 'white', padding: '0 5px', fontSize: '12px', color: '#666' }}>Enquiry Date*</label>
@@ -1751,7 +2273,7 @@ const EnrollStudentPage = () => {
                         </div>
 
                         <div style={{ position: 'relative' }}>
-                            <label style={{ position: 'absolute', top: '-8px', left: '10px', background: 'white', padding: '0 5px', fontSize: '12px', color: '#666' }}>Gender</label>
+                            <label style={{ position: 'absolute', top: '-8px', left: '10px', background: 'white', padding: '0 5px', fontSize: '12px', color: '#666' }}>Gender*</label>
                             <select name="gender" value={formData.gender} onChange={handleInput} style={{ width: '100%', padding: '14px', border: '1px solid #e0e0e0', borderRadius: '6px', outline: 'none', color: '#555', appearance: 'none', background: 'url("data:image/svg+xml;utf8,<svg fill=%27black%27 height=%2724%27 viewBox=%270 0 24 24%27 width=%2724%27 xmlns=%27http://www.w3.org/2000/svg%27><path d=%27M7 10l5 5 5-5z%27/><path d=%27M0 0h24v24H0z%27 fill=%27none%27/></svg>") no-repeat right 10px center' }}>
                                 <option>Male</option>
                                 <option>Female</option>
@@ -1760,27 +2282,27 @@ const EnrollStudentPage = () => {
                             </select>
                         </div>
                         <div style={{ position: 'relative' }}>
-                            <label style={{ position: 'absolute', top: '-8px', left: '10px', background: 'white', padding: '0 5px', fontSize: '12px', color: '#666' }}>Date of Birth</label>
+                            <label style={{ position: 'absolute', top: '-8px', left: '10px', background: 'white', padding: '0 5px', fontSize: '12px', color: '#666' }}>Date of Birth*</label>
                             <input type="date" name="dob" value={formData.dob} onChange={handleInput} style={{ width: '100%', padding: '14px', border: '1px solid #e0e0e0', borderRadius: '6px', outline: 'none', color: '#999' }} />
                         </div>
                         <div>
-                            <input type="email" name="email" value={formData.email} onChange={handleInput} placeholder="Email Id" style={{ width: '100%', padding: '14px', border: '1px solid #e0e0e0', borderRadius: '6px', outline: 'none' }} />
+                            <input type="email" name="email" value={formData.email} onChange={handleInput} placeholder="Email Id*" style={{ width: '100%', padding: '14px', border: '1px solid #e0e0e0', borderRadius: '6px', outline: 'none' }} />
                         </div>
                         <div>
-                            <input type="text" name="fingerprint_id" value={formData.fingerprint_id} onChange={handleInput} placeholder="Biometric Registration No." style={{ width: '100%', padding: '14px', border: '1px solid #e0e0e0', borderRadius: '6px', outline: 'none' }} />
+                            <input type="text" name="fingerprint_id" value={formData.fingerprint_id} onChange={handleInput} placeholder="Biometric Registration No.*" style={{ width: '100%', padding: '14px', border: '1px solid #e0e0e0', borderRadius: '6px', outline: 'none' }} />
                         </div>
 
                         <div>
-                            <input type="text" name="fatherContact" value={formData.fatherContact} onInput={(e) => { e.target.value = e.target.value.replace(/\D/g, '').slice(0, 10); handleInput(e); }} placeholder="Father Contact Number" style={{ width: '100%', padding: '14px', border: '1px solid #e0e0e0', borderRadius: '6px', outline: 'none' }} />
+                            <input type="text" name="fatherContact" value={formData.fatherContact} onInput={(e) => { e.target.value = e.target.value.replace(/\D/g, '').slice(0, 10); handleInput(e); }} placeholder="Father Contact Number*" style={{ width: '100%', padding: '14px', border: '1px solid #e0e0e0', borderRadius: '6px', outline: 'none' }} />
                         </div>
                         <div>
-                            <input type="text" name="motherContact" value={formData.motherContact} onInput={(e) => { e.target.value = e.target.value.replace(/\D/g, '').slice(0, 10); handleInput(e); }} placeholder="Mother Contact Number" style={{ width: '100%', padding: '14px', border: '1px solid #e0e0e0', borderRadius: '6px', outline: 'none' }} />
+                            <input type="text" name="motherContact" value={formData.motherContact} onInput={(e) => { e.target.value = e.target.value.replace(/\D/g, '').slice(0, 10); handleInput(e); }} placeholder="Mother Contact Number*" style={{ width: '100%', padding: '14px', border: '1px solid #e0e0e0', borderRadius: '6px', outline: 'none' }} />
                         </div>
                         <div>
-                            <input type="text" name="studentContact" value={formData.studentContact} onInput={(e) => { e.target.value = e.target.value.replace(/\D/g, '').slice(0, 10); handleInput(e); }} placeholder="Student Contact Number" style={{ width: '100%', padding: '14px', border: '1px solid #e0e0e0', borderRadius: '6px', outline: 'none' }} />
+                            <input type="text" name="studentContact" value={formData.studentContact} onInput={(e) => { e.target.value = e.target.value.replace(/\D/g, '').slice(0, 10); handleInput(e); }} placeholder="Student Contact Number*" style={{ width: '100%', padding: '14px', border: '1px solid #e0e0e0', borderRadius: '6px', outline: 'none' }} />
                         </div>
                         <div style={{ gridColumn: '1 / -1' }}>
-                            <textarea name="address" value={formData.address} onChange={handleInput} placeholder="Full Residential Address" rows="3" style={{ width: '100%', padding: '14px', border: '1px solid #e0e0e0', borderRadius: '6px', outline: 'none', resize: 'vertical' }}></textarea>
+                            <textarea name="address" value={formData.address} onChange={handleInput} placeholder="Full Residential Address*" rows="3" style={{ width: '100%', padding: '14px', border: '1px solid #e0e0e0', borderRadius: '6px', outline: 'none', resize: 'vertical' }}></textarea>
                         </div>
                     </div>
                 </div>
@@ -1794,13 +2316,13 @@ const EnrollStudentPage = () => {
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '25px', marginTop: '10px' }}>
                         <div>
                             <select name="branch" value={formData.branch} onChange={handleInput} style={{ width: '100%', padding: '14px', border: '1px solid #e0e0e0', borderRadius: '6px', outline: 'none', color: '#555', appearance: 'none', background: 'url("data:image/svg+xml;utf8,<svg fill=%27black%27 height=%2724%27 viewBox=%270 0 24 24%27 width=%2724%27 xmlns=%27http://www.w3.org/2000/svg%27><path d=%27M7 10l5 5 5-5z%27/><path d=%27M0 0h24v24H0z%27 fill=%27none%27/></svg>") no-repeat right 10px center' }}>
-                                <option value="" disabled>Select Branch</option>
+                                <option value="" disabled>Select Branch*</option>
                                 <option>Nashik Main</option>
                             </select>
                         </div>
                         <div>
                             <select name="course" value={formData.course} onChange={handleInput} style={{ width: '100%', padding: '14px', border: '1px solid #e0e0e0', borderRadius: '6px', outline: 'none', color: '#555', appearance: 'none', background: 'url("data:image/svg+xml;utf8,<svg fill=%27black%27 height=%2724%27 viewBox=%270 0 24 24%27 width=%2724%27 xmlns=%27http://www.w3.org/2000/svg%27><path d=%27M7 10l5 5 5-5z%27/><path d=%27M0 0h24v24H0z%27 fill=%27none%27/></svg>") no-repeat right 10px center' }}>
-                                <option value="" disabled>Select Course</option>
+                                <option value="" disabled>Select Course*</option>
                                 <option>Staff Selection Commission (SSC-CGL)</option>
                                 <option>POLICE/ARMY/MILITARY TRAINING BATCH</option>
                                 <option>XI - Science PCMB [JEE-NEET-CET]</option>
@@ -1816,7 +2338,7 @@ const EnrollStudentPage = () => {
                             </select>
                         </div>
                         <div>
-                            <input type="text" name="batchTiming" value={formData.batchTiming} onChange={handleInput} placeholder="Batch Timing" style={{ width: '100%', padding: '14px', border: '1px solid #e0e0e0', borderRadius: '6px', outline: 'none' }} />
+                            <input type="text" name="batchTiming" value={formData.batchTiming} onChange={handleInput} placeholder="Batch Timing*" style={{ width: '100%', padding: '14px', border: '1px solid #e0e0e0', borderRadius: '6px', outline: 'none' }} />
                         </div>
                     </div>
                 </div>
@@ -1829,13 +2351,13 @@ const EnrollStudentPage = () => {
                     </div>
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '25px', marginTop: '10px' }}>
                         <div>
-                            <input type="text" name="previousSchool" value={formData.previousSchool} onChange={handleInput} placeholder="Previous School/College Name" style={{ width: '100%', padding: '14px', border: '1px solid #e0e0e0', borderRadius: '6px', outline: 'none' }} />
+                            <input type="text" name="previousSchool" value={formData.previousSchool} onChange={handleInput} placeholder="Previous School/College Name*" style={{ width: '100%', padding: '14px', border: '1px solid #e0e0e0', borderRadius: '6px', outline: 'none' }} />
                         </div>
                         <div>
-                            <input type="number" name="tenthPercent" value={formData.tenthPercent} onChange={handleInput} placeholder="10th Percentage" style={{ width: '100%', padding: '14px', border: '1px solid #e0e0e0', borderRadius: '6px', outline: 'none' }} />
+                            <input type="number" name="tenthPercent" value={formData.tenthPercent} onChange={handleInput} placeholder="10th Percentage*" style={{ width: '100%', padding: '14px', border: '1px solid #e0e0e0', borderRadius: '6px', outline: 'none' }} />
                         </div>
                         <div>
-                            <input type="number" name="twelfthPercent" value={formData.twelfthPercent} onChange={handleInput} placeholder="12th Percentage" style={{ width: '100%', padding: '14px', border: '1px solid #e0e0e0', borderRadius: '6px', outline: 'none' }} />
+                            <input type="number" name="twelfthPercent" value={formData.twelfthPercent} onChange={handleInput} placeholder="12th Percentage*" style={{ width: '100%', padding: '14px', border: '1px solid #e0e0e0', borderRadius: '6px', outline: 'none' }} />
                         </div>
                     </div>
                 </div>
@@ -1848,16 +2370,16 @@ const EnrollStudentPage = () => {
                     </div>
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '25px', marginTop: '10px' }}>
                         <div>
-                            <input type="text" name="bankName" value={formData.bankName} onChange={handleInput} placeholder="Bank Name" style={{ width: '100%', padding: '14px', border: '1px solid #e0e0e0', borderRadius: '6px', outline: 'none' }} />
+                            <input type="text" name="bankName" value={formData.bankName} onChange={handleInput} placeholder="Bank Name*" style={{ width: '100%', padding: '14px', border: '1px solid #e0e0e0', borderRadius: '6px', outline: 'none' }} />
                         </div>
                         <div>
-                            <input type="text" name="accountNumber" value={formData.accountNumber} onInput={(e) => { e.target.value = e.target.value.replace(/\D/g, ''); handleInput(e); }} placeholder="Account Number" style={{ width: '100%', padding: '14px', border: '1px solid #e0e0e0', borderRadius: '6px', outline: 'none' }} />
+                            <input type="text" name="accountNumber" value={formData.accountNumber} onInput={(e) => { e.target.value = e.target.value.replace(/\D/g, ''); handleInput(e); }} placeholder="Account Number*" style={{ width: '100%', padding: '14px', border: '1px solid #e0e0e0', borderRadius: '6px', outline: 'none' }} />
                         </div>
                         <div>
-                            <input type="text" name="ifscCode" value={formData.ifscCode} onChange={handleInput} placeholder="IFSC Code" style={{ width: '100%', padding: '14px', border: '1px solid #e0e0e0', borderRadius: '6px', outline: 'none' }} />
+                            <input type="text" name="ifscCode" value={formData.ifscCode} onChange={handleInput} placeholder="IFSC Code*" style={{ width: '100%', padding: '14px', border: '1px solid #e0e0e0', borderRadius: '6px', outline: 'none' }} />
                         </div>
                         <div>
-                            <input type="text" name="accountHolder" value={formData.accountHolder} onChange={handleInput} placeholder="Account Holder Name" style={{ width: '100%', padding: '14px', border: '1px solid #e0e0e0', borderRadius: '6px', outline: 'none' }} />
+                            <input type="text" name="accountHolder" value={formData.accountHolder} onChange={handleInput} placeholder="Account Holder Name*" style={{ width: '100%', padding: '14px', border: '1px solid #e0e0e0', borderRadius: '6px', outline: 'none' }} />
                         </div>
                     </div>
                     <div style={{ gridColumn: '1 / -1', borderTop: '1px solid #eee', marginTop: '15px', paddingTop: '25px' }}>
@@ -1895,25 +2417,25 @@ const EnrollStudentPage = () => {
                         <div style={{ fontWeight: 'bold', color: '#555', marginBottom: '15px' }}>Fees & Payment Details</div>
                         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '25px' }}>
                             <div>
-                                <input type="number" name="totalFee" value={formData.totalFee} onChange={handleInput} placeholder="Total Fee (₹)" style={{ width: '100%', padding: '14px', border: '1px solid #e0e0e0', borderRadius: '6px', outline: 'none' }} />
+                                <input type="text" name="totalFee" value={formData.totalFee} onInput={(e) => { e.target.value = e.target.value.replace(/\D/g, ''); handleInput(e); }} placeholder="Total Fee (₹)*" style={{ width: '100%', padding: '14px', border: '1px solid #e0e0e0', borderRadius: '6px', outline: 'none' }} />
                             </div>
                             <div>
-                                <input type="number" name="amountReceived" value={formData.amountReceived} onChange={handleInput} placeholder="Amount Received (₹)" style={{ width: '100%', padding: '14px', border: '1px solid #e0e0e0', borderRadius: '6px', outline: 'none' }} />
+                                <input type="text" name="amountReceived" value={formData.amountReceived} onInput={(e) => { e.target.value = e.target.value.replace(/\D/g, ''); handleInput(e); }} placeholder="Amount Received (₹)*" style={{ width: '100%', padding: '14px', border: '1px solid #e0e0e0', borderRadius: '6px', outline: 'none' }} />
                             </div>
                             <div>
                                 <input type="text" value={dueFees} readOnly placeholder="Due Fees (₹)" style={{ width: '100%', padding: '14px', border: '1px solid #e0e0e0', borderRadius: '6px', outline: 'none', background: '#f8f9fa' }} />
                             </div>
                             <div style={{ position: 'relative' }}>
-                                <label style={{ position: 'absolute', top: '-8px', left: '10px', background: 'white', padding: '0 5px', fontSize: '12px', color: '#666' }}>Payment Mode</label>
+                                <label style={{ position: 'absolute', top: '-8px', left: '10px', background: 'white', padding: '0 5px', fontSize: '12px', color: '#666' }}>Payment Mode*</label>
                                 <select name="paymentMode" value={formData.paymentMode} onChange={handleInput} style={{ width: '100%', padding: '14px', border: '1px solid #e0e0e0', borderRadius: '6px', outline: 'none', color: '#555', appearance: 'none', background: 'url("data:image/svg+xml;utf8,<svg fill=%27black%27 height=%2724%27 viewBox=%270 0 24 24%27 width=%2724%27 xmlns=%27http://www.w3.org/2000/svg%27><path d=%27M7 10l5 5 5-5z%27/><path d=%27M0 0h24v24H0z%27 fill=%27none%27/></svg>") no-repeat right 10px center' }}>
-                                    <option value="" disabled>Select Payment Mode</option>
+                                    <option value="" disabled>Select Payment Mode*</option>
                                     <option>Cash</option>
                                     <option>Online</option>
                                     <option>Net Banking</option>
                                 </select>
                             </div>
                             <div style={{ position: 'relative' }}>
-                                <label style={{ position: 'absolute', top: '-8px', left: '10px', background: 'white', padding: '0 5px', fontSize: '12px', color: '#666' }}>Installment</label>
+                                <label style={{ position: 'absolute', top: '-8px', left: '10px', background: 'white', padding: '0 5px', fontSize: '12px', color: '#666' }}>Installment*</label>
                                 <select name="installment" value={formData.installment} onChange={handleInput} style={{ width: '100%', padding: '14px', border: '1px solid #e0e0e0', borderRadius: '6px', outline: 'none', color: '#555', appearance: 'none', background: 'url("data:image/svg+xml;utf8,<svg fill=%27black%27 height=%2724%27 viewBox=%270 0 24 24%27 width=%2724%27 xmlns=%27http://www.w3.org/2000/svg%27><path d=%27M7 10l5 5 5-5z%27/><path d=%27M0 0h24v24H0z%27 fill=%27none%27/></svg>") no-repeat right 10px center' }}>
                                     <option value="No">No</option>
                                     <option value="Yes">Yes</option>
@@ -1934,7 +2456,7 @@ const EnrollStudentPage = () => {
                     </button>
                 )}
                 {step < 4 && (
-                    <button onClick={() => setStep(step + 1)} style={{ padding: '12px 24px', background: '#8b5cf6', border: 'none', borderRadius: '6px', cursor: 'pointer', color: 'white', fontWeight: 'bold', boxShadow: '0 4px 6px rgba(139, 92, 246, 0.2)' }}>
+                    <button onClick={handleNextStep} style={{ padding: '12px 24px', background: '#8b5cf6', border: 'none', borderRadius: '6px', cursor: 'pointer', color: 'white', fontWeight: 'bold', boxShadow: '0 4px 6px rgba(139, 92, 246, 0.2)' }}>
                         Next Step
                     </button>
                 )}
@@ -1962,8 +2484,7 @@ const DevicesPage = () => {
     const toastTimerRef = React.useRef(null);
 
     const resolvedName = (scan) => {
-        const scanId = String(scan.userId).trim();
-        const user = users.find(u => String(u.id).trim() === scanId || String(u.fingerprint_id).trim() === scanId);
+        const user = users.find(u => String(u.id) === String(scan.userId) || String(u.fingerprint_id) === String(scan.userId));
         return user ? user.name : (scan.userName || `User ${scan.userId}`);
     };
 
@@ -1972,12 +2493,11 @@ const DevicesPage = () => {
         if (scan.userPhoto) {
             photo = scan.userPhoto;
         } else {
-            const scanId = String(scan.userId).trim();
-            const user = users.find(u => String(u.id).trim() === scanId || String(u.fingerprint_id).trim() === scanId);
+            const user = users.find(u => String(u.id) === String(scan.userId) || String(u.fingerprint_id) === String(scan.userId));
             photo = user ? user.photo : null;
         }
         if (photo) {
-            if (photo.startsWith('http')) return photo;
+            if (photo.startsWith('http') || photo.startsWith('data:')) return photo;
             return `http://${backendHost}:8080${photo}`;
         }
         return null;
@@ -2429,13 +2949,13 @@ const BirthdaysPage = () => {
 
         u.daysUntil = diffDays;
         u.ageTurning = bday.getFullYear() - dob.getFullYear();
-        return diffDays >= 0;
+        return diffDays >= 0 && diffDays <= 30;
     }).sort((a, b) => a.daysUntil - b.daysUntil);
 
     return (
         <div className="dashboard-card">
             <div className="card-header">
-                <h2>🎂 All Upcoming Birthdays</h2>
+                <h2>🎂 Upcoming Birthdays (Next 30 Days)</h2>
             </div>
             <table className="dashboard-table">
                 <thead>
@@ -2466,15 +2986,13 @@ const BirthdaysPage = () => {
                                         `${u.daysUntil} days`}
                             </td>
                             <td>
-                                <a href={`https://wa.me/91${u.studentPhone || u.parentPhone || ''}`} target="_blank" rel="noreferrer" className="btn btn-primary" style={{ padding: '4px 10px', background: '#e74c3c', borderColor: '#e74c3c', textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: '5px' }}>
-                                    ✉️ {u.studentPhone || u.parentPhone ? (u.studentPhone || u.parentPhone) : 'Send Wish'}
-                                </a>
+                                <button className="btn btn-primary" style={{ padding: '4px 10px', background: '#e74c3c', borderColor: '#e74c3c' }}>✉️ Send Wish</button>
                             </td>
                         </tr>
                     ))}
                     {upcomingBirthdays.length === 0 && (
                         <tr>
-                            <td colSpan="6" style={{ textAlign: 'center', padding: '20px', color: '#888' }}>No birthdays found for any registered students.</td>
+                            <td colSpan="6" style={{ textAlign: 'center', padding: '20px', color: '#888' }}>No upcoming birthdays found in the next 30 days.</td>
                         </tr>
                     )}
                 </tbody>
@@ -2496,7 +3014,7 @@ const TeacherProfilePage = () => {
 
     const handleExport = (format) => {
         if (!data || !data.records || data.records.length === 0) return;
-
+        
         const exportData = data.records.map(r => ({
             "Date": r.date,
             "In / Out": r.firstIn !== '--:--' ? `${r.firstIn} / ${r.lastOut}` : '--:-- / --:--',
@@ -2534,6 +3052,81 @@ const TeacherProfilePage = () => {
             doc.save(`${tName}_Punches_${filterMonth}_${filterYear}.pdf`);
         }
         setExportMenuOpen(false);
+    };
+
+    const getExpectedHours = (timingStr) => {
+        if (!timingStr) return 8;
+        const matchRange = timingStr.match(/(\d{1,2})(?::(\d{2}))?\s*(AM|PM)\s*-\s*(\d{1,2})(?::(\d{2}))?\s*(AM|PM)/i);
+        if (matchRange) {
+            let startH = parseInt(matchRange[1], 10);
+            const startM = parseInt(matchRange[2] || '0', 10);
+            const startAmpm = matchRange[3].toUpperCase();
+            let endH = parseInt(matchRange[4], 10);
+            const endM = parseInt(matchRange[5] || '0', 10);
+            const endAmpm = matchRange[6].toUpperCase();
+
+            if (startAmpm === 'PM' && startH !== 12) startH += 12;
+            if (startAmpm === 'AM' && startH === 12) startH = 0;
+            if (endAmpm === 'PM' && endH !== 12) endH += 12;
+            if (endAmpm === 'AM' && endH === 12) endH = 0;
+
+            let startTotalMins = startH * 60 + startM;
+            let endTotalMins = endH * 60 + endM;
+
+            if (endTotalMins < startTotalMins) {
+                endTotalMins += 24 * 60;
+            }
+            return (endTotalMins - startTotalMins) / 60;
+        }
+        return 8;
+    };
+
+    const handleSalaryExport = () => {
+        if (!data || !data.records) return;
+        const tName = (teacher && teacher.name) ? teacher.name : 'User';
+        const baseSalary = Number(teacher?.salary) || 0;
+        const dailyRate = baseSalary / 30;
+        const expectedHours = getExpectedHours(teacher?.timing);
+        const records = data.records;
+        const totalDays = records.length;
+        const absentDays = records.filter(r => r.status === 'Absent').length;
+        const sundayDays = records.filter(r => r.status === 'Sunday').length;
+        const presentDays = records.filter(r => r.status === 'Present' || r.status === 'Late').length;
+
+        let totalPay = 0;
+        let computedPaidDays = 0;
+        records.forEach(r => {
+            if (r.status === 'Sunday') {
+                computedPaidDays += 1;
+                totalPay += dailyRate;
+            } else if (r.status === 'Present' || r.status === 'Late') {
+                const actualHours = (r.durationMinutes || 0) / 60;
+                const ratio = expectedHours > 0 ? Math.min(1, actualHours / expectedHours) : 1;
+                computedPaidDays += ratio;
+                totalPay += dailyRate * ratio;
+            }
+        });
+
+        const doc = new jsPDF();
+        doc.setFontSize(16);
+        doc.text(`Salary Slip - ${tName}`, 14, 20);
+        doc.setFontSize(12);
+        doc.text(`Month/Year: ${filterMonth}/${filterYear}`, 14, 30);
+        doc.text(`Base Salary (Monthly): Rs ${baseSalary.toFixed(2)}`, 14, 40);
+        doc.text(`Daily Rate (30 Days): Rs ${dailyRate.toFixed(2)}`, 14, 50);
+        doc.text(`Shift Timing: ${teacher?.timing || 'N/A'} (Expected Hours: ${expectedHours.toFixed(1)}h)`, 14, 60);
+        
+        doc.text(`Total Days: ${totalDays}`, 14, 75);
+        doc.text(`Present Days: ${presentDays}`, 14, 85);
+        doc.text(`Holidays/Sundays: ${sundayDays}`, 14, 95);
+        doc.text(`Absent Days: ${absentDays}`, 14, 105);
+        doc.text(`Equivalent Paid Days: ${computedPaidDays.toFixed(2)}`, 14, 115);
+        
+        doc.setFontSize(14);
+        doc.setTextColor('#16a34a');
+        doc.text(`Net Payable Amount: Rs ${totalPay.toFixed(2)}`, 14, 130);
+        
+        doc.save(`${tName}_Salary_Slip_${filterMonth}_${filterYear}.pdf`);
     };
 
     const fetchTeacherData = (month = filterMonth, year = filterYear) => {
@@ -2594,7 +3187,7 @@ const TeacherProfilePage = () => {
                         <div><strong>Telephone:</strong> {teacher.studentContact || teacher.phone || 'N/A'}</div>
                         <div><strong>Biometric Id:</strong> {teacher.fingerprint_id}</div>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                            <strong>Status:</strong>
+                            <strong>Status:</strong> 
                             <span style={{ background: '#dcfce7', color: '#16a34a', padding: '4px 12px', borderRadius: '12px', fontSize: '12px', fontWeight: '600' }}>Active</span>
                         </div>
                     </div>
@@ -2615,10 +3208,10 @@ const TeacherProfilePage = () => {
                             <button style={{ background: 'white', color: '#64748b', border: '1px solid #cbd5e1', padding: '10px', borderRadius: '8px', fontWeight: '600', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', fontSize: '14px' }}>
                                 <span style={{ fontSize: '16px' }}>☑️</span> Lectures
                             </button>
-                            <button style={{ background: 'white', color: '#ef4444', border: '1px solid #ef4444', padding: '10px', borderRadius: '8px', fontWeight: '600', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', fontSize: '14px' }}>
+                            <button onClick={() => setActiveTab('salary')} style={{ background: activeTab === 'salary' ? '#fef2f2' : 'white', color: '#ef4444', border: '1px solid #ef4444', padding: '10px', borderRadius: '8px', fontWeight: '600', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', fontSize: '14px' }}>
                                 <span style={{ fontSize: '16px', border: '1px solid #ef4444', borderRadius: '50%', width: '18px', height: '18px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>₹</span> Salary
                             </button>
-                            <button style={{ background: 'white', color: '#22c55e', border: '1px solid #22c55e', padding: '10px', borderRadius: '8px', fontWeight: '600', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', fontSize: '14px' }}>
+                            <button onClick={() => setActiveTab('performance')} style={{ background: activeTab === 'performance' ? '#f0fdf4' : 'white', color: '#22c55e', border: '1px solid #22c55e', padding: '10px', borderRadius: '8px', fontWeight: '600', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', fontSize: '14px' }}>
                                 <span style={{ fontSize: '16px' }}>📈</span> Performance
                             </button>
                         </div>
@@ -2721,7 +3314,7 @@ const TeacherProfilePage = () => {
                                         Get Punches
                                     </button>
                                 </div>
-
+                                
                                 {/* Right Table Panel */}
                                 <div style={{ flex: 1 }}>
                                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
@@ -2745,59 +3338,59 @@ const TeacherProfilePage = () => {
                                             )}
                                         </div>
                                     </div>
-
+                                    
                                     <input type="text" placeholder="Search..." style={{ width: '100%', padding: '12px 16px', borderRadius: '8px', border: '1px solid #e2e8f0', marginBottom: '20px', outline: 'none', color: '#475569', fontSize: '14px', backgroundColor: '#f8fafc' }} />
-
+                                    
                                     <div style={{ maxHeight: '450px', overflowY: 'auto', border: '1px solid #e2e8f0', borderRadius: '8px', backgroundColor: 'white' }}>
-                                        {data.records && data.records.length > 0 ? (
-                                            <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '13px' }}>
-                                                <thead style={{ position: 'sticky', top: 0, zIndex: 1 }}>
-                                                    <tr style={{ background: '#f8fafc', color: '#64748b', fontSize: '12px', letterSpacing: '0.5px' }}>
-                                                        <th style={{ padding: '15px 12px', borderBottom: '1px solid #e2e8f0', fontWeight: '600' }}>DATE</th>
-                                                        <th style={{ padding: '15px 12px', borderBottom: '1px solid #e2e8f0', fontWeight: '600' }}>IN / OUT</th>
-                                                        <th style={{ padding: '15px 12px', borderBottom: '1px solid #e2e8f0', fontWeight: '600' }}>PUNCHES</th>
-                                                        <th style={{ padding: '15px 12px', borderBottom: '1px solid #e2e8f0', fontWeight: '600' }}>TOTAL HOURS</th>
-                                                        <th style={{ padding: '15px 12px', borderBottom: '1px solid #e2e8f0', fontWeight: '600' }}>STATUS</th>
+                                    {data.records && data.records.length > 0 ? (
+                                        <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '13px' }}>
+                                            <thead style={{ position: 'sticky', top: 0, zIndex: 1 }}>
+                                                <tr style={{ background: '#f8fafc', color: '#64748b', fontSize: '12px', letterSpacing: '0.5px' }}>
+                                                    <th style={{ padding: '15px 12px', borderBottom: '1px solid #e2e8f0', fontWeight: '600' }}>DATE</th>
+                                                    <th style={{ padding: '15px 12px', borderBottom: '1px solid #e2e8f0', fontWeight: '600' }}>IN / OUT</th>
+                                                    <th style={{ padding: '15px 12px', borderBottom: '1px solid #e2e8f0', fontWeight: '600' }}>PUNCHES</th>
+                                                    <th style={{ padding: '15px 12px', borderBottom: '1px solid #e2e8f0', fontWeight: '600' }}>TOTAL HOURS</th>
+                                                    <th style={{ padding: '15px 12px', borderBottom: '1px solid #e2e8f0', fontWeight: '600' }}>STATUS</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                {data.records.map((r, i) => (
+                                                    <tr key={i} style={{ borderBottom: '1px solid #f1f5f9', ':hover': { backgroundColor: '#f8fafc' } }}>
+                                                        <td style={{ padding: '15px 12px', fontWeight: '500', color: '#1e293b' }}>{r.date}</td>
+                                                        <td style={{ padding: '15px 12px', color: '#64748b' }}>
+                                                            {r.firstIn !== '--:--' ? (
+                                                                <div style={{ display: 'flex', gap: '5px', alignItems: 'center' }}>
+                                                                    <span style={{ color: '#10b981', fontWeight: '600' }}>{r.firstIn}</span> /
+                                                                    <span style={{ color: '#f59e0b', fontWeight: '600' }}>{r.lastOut}</span>
+                                                                </div>
+                                                            ) : (
+                                                                <span style={{ color: '#94a3b8' }}>--:-- / --:--</span>
+                                                            )}
+                                                        </td>
+                                                        <td style={{ padding: '15px 12px', color: '#64748b' }}>{r.totalEntries || 0}</td>
+                                                        <td style={{ padding: '15px 12px', color: '#1e293b', fontWeight: '500' }}>
+                                                            {r.durationMinutes ? `${Math.floor(r.durationMinutes / 60)}h ${r.durationMinutes % 60}m` : '0h 0m'}
+                                                        </td>
+                                                        <td style={{ padding: '15px 12px' }}>
+                                                            {r.status === 'Late' ? (
+                                                                <span style={{ background: '#fef5e7', color: '#e67e22', padding: '4px 10px', borderRadius: '6px', fontSize: '11px', fontWeight: '600' }}>Late</span>
+                                                            ) : r.status === 'Absent' ? (
+                                                                <span style={{ background: '#fef2f2', color: '#ef4444', padding: '4px 10px', borderRadius: '6px', fontSize: '11px', fontWeight: '600' }}>Absent</span>
+                                                            ) : r.status === 'Sunday' ? (
+                                                                <span style={{ background: '#f8fafc', color: '#64748b', padding: '4px 10px', borderRadius: '6px', fontSize: '11px', fontWeight: '600' }}>Sunday</span>
+                                                            ) : (
+                                                                <span style={{ color: '#10b981', fontWeight: '600' }}>Present</span>
+                                                            )}
+                                                        </td>
                                                     </tr>
-                                                </thead>
-                                                <tbody>
-                                                    {data.records.map((r, i) => (
-                                                        <tr key={i} style={{ borderBottom: '1px solid #f1f5f9', ':hover': { backgroundColor: '#f8fafc' } }}>
-                                                            <td style={{ padding: '15px 12px', fontWeight: '500', color: '#1e293b' }}>{r.date}</td>
-                                                            <td style={{ padding: '15px 12px', color: '#64748b' }}>
-                                                                {r.firstIn !== '--:--' ? (
-                                                                    <div style={{ display: 'flex', gap: '5px', alignItems: 'center' }}>
-                                                                        <span style={{ color: '#10b981', fontWeight: '600' }}>{r.firstIn}</span> /
-                                                                        <span style={{ color: '#f59e0b', fontWeight: '600' }}>{r.lastOut}</span>
-                                                                    </div>
-                                                                ) : (
-                                                                    <span style={{ color: '#94a3b8' }}>--:-- / --:--</span>
-                                                                )}
-                                                            </td>
-                                                            <td style={{ padding: '15px 12px', color: '#64748b' }}>{r.totalEntries || 0}</td>
-                                                            <td style={{ padding: '15px 12px', color: '#1e293b', fontWeight: '500' }}>
-                                                                {r.durationMinutes ? `${Math.floor(r.durationMinutes / 60)}h ${r.durationMinutes % 60}m` : '0h 0m'}
-                                                            </td>
-                                                            <td style={{ padding: '15px 12px' }}>
-                                                                {r.status === 'Late' ? (
-                                                                    <span style={{ background: '#fef5e7', color: '#e67e22', padding: '4px 10px', borderRadius: '6px', fontSize: '11px', fontWeight: '600' }}>Late</span>
-                                                                ) : r.status === 'Absent' ? (
-                                                                    <span style={{ background: '#fef2f2', color: '#ef4444', padding: '4px 10px', borderRadius: '6px', fontSize: '11px', fontWeight: '600' }}>Absent</span>
-                                                                ) : r.status === 'Sunday' ? (
-                                                                    <span style={{ background: '#f8fafc', color: '#64748b', padding: '4px 10px', borderRadius: '6px', fontSize: '11px', fontWeight: '600' }}>Sunday</span>
-                                                                ) : (
-                                                                    <span style={{ color: '#10b981', fontWeight: '600' }}>Present</span>
-                                                                )}
-                                                            </td>
-                                                        </tr>
-                                                    ))}
-                                                </tbody>
-                                            </table>
-                                        ) : (
-                                            <div style={{ padding: '40px', textAlign: 'center', color: '#94a3b8' }}>No data available in table</div>
-                                        )}
+                                                ))}
+                                            </tbody>
+                                        </table>
+                                    ) : (
+                                        <div style={{ padding: '40px', textAlign: 'center', color: '#94a3b8' }}>No data available in table</div>
+                                    )}
                                     </div>
-
+                                    
                                     <div style={{ display: 'flex', justifyContent: 'space-between', padding: '20px 0 10px 0', color: '#1e293b', fontSize: '14px', fontWeight: '600' }}>
                                         <div>TOTAL</div>
                                         <div>{data.summary ? data.summary.totalHours : '0.00'} HRS</div>
@@ -2806,6 +3399,115 @@ const TeacherProfilePage = () => {
                                         Showing {data.records ? data.records.length : 0} out of {data.records ? data.records.length : 0} entries
                                     </div>
                                 </div>
+                            </div>
+                        )}
+                        {activeTab === 'salary' && (
+                            <div style={{ background: 'white', borderRadius: '12px', padding: '25px', boxShadow: '0 4px 15px rgba(0,0,0,0.02)' }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '25px', borderBottom: '1px solid #f1f5f9', paddingBottom: '15px' }}>
+                                    <div>
+                                        <h3 style={{ margin: 0, fontSize: '18px', color: '#1f2937' }}>Salary Slip</h3>
+                                        <p style={{ margin: '5px 0 0 0', color: '#64748b', fontSize: '13px' }}>{new Date(filterYear, filterMonth - 1).toLocaleString('default', { month: 'long', year: 'numeric' })}</p>
+                                    </div>
+                                    <button onClick={handleSalaryExport} style={{ background: '#ef4444', color: 'white', border: 'none', padding: '8px 16px', borderRadius: '6px', fontWeight: '600', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px' }}>
+                                        <span>📄</span> Export to PDF
+                                    </button>
+                                </div>
+
+                                {(() => {
+                                    const baseSalary = Number(teacher?.salary) || 0;
+                                    const dailyRate = baseSalary / 30;
+                                    const expectedHours = getExpectedHours(teacher?.timing);
+                                    
+                                    const records = data?.records || [];
+                                    
+                                    const totalDays = records.length;
+                                    const absentDays = records.filter(r => r.status === 'Absent').length;
+                                    const sundayDays = records.filter(r => r.status === 'Sunday').length;
+                                    const presentDays = records.filter(r => r.status === 'Present' || r.status === 'Late').length;
+                                    
+                                    let totalPay = 0;
+                                    let paidDays = 0;
+                                    records.forEach(r => {
+                                        if (r.status === 'Sunday') {
+                                            paidDays += 1;
+                                            totalPay += dailyRate;
+                                        } else if (r.status === 'Present' || r.status === 'Late') {
+                                            const actualHours = (r.durationMinutes || 0) / 60;
+                                            const ratio = expectedHours > 0 ? Math.min(1, actualHours / expectedHours) : 1;
+                                            paidDays += ratio;
+                                            totalPay += dailyRate * ratio;
+                                        }
+                                    });
+
+                                    return (
+                                        <div>
+                                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px', marginBottom: '25px' }}>
+                                                <div style={{ background: '#f8fafc', padding: '15px', borderRadius: '10px' }}>
+                                                    <div style={{ fontSize: '13px', color: '#64748b', marginBottom: '5px' }}>Base Salary (Monthly)</div>
+                                                    <div style={{ fontSize: '20px', fontWeight: 'bold', color: '#1e293b' }}>₹ {baseSalary.toFixed(2)}</div>
+                                                </div>
+                                                <div style={{ background: '#f8fafc', padding: '15px', borderRadius: '10px' }}>
+                                                    <div style={{ fontSize: '13px', color: '#64748b', marginBottom: '5px' }}>Daily Rate (30 Days)</div>
+                                                    <div style={{ fontSize: '20px', fontWeight: 'bold', color: '#1e293b' }}>₹ {dailyRate.toFixed(2)}</div>
+                                                </div>
+                                            </div>
+
+                                            <h4 style={{ margin: '0 0 15px 0', color: '#334155' }}>Attendance & Shift Summary</h4>
+                                            <div style={{ background: '#f8fafc', padding: '15px', borderRadius: '10px', marginBottom: '20px', fontSize: '14px', color: '#475569' }}>
+                                                <strong>Shift Timing:</strong> {teacher?.timing || 'N/A'} (Expected: {expectedHours.toFixed(1)} hours/day)
+                                            </div>
+                                            
+                                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '15px', marginBottom: '30px' }}>
+                                                <div style={{ textAlign: 'center', padding: '12px', border: '1px solid #e2e8f0', borderRadius: '8px' }}>
+                                                    <div style={{ fontSize: '22px', fontWeight: 'bold', color: '#3b82f6' }}>{totalDays}</div>
+                                                    <div style={{ fontSize: '12px', color: '#64748b', marginTop: '4px' }}>Total Days</div>
+                                                </div>
+                                                <div style={{ textAlign: 'center', padding: '12px', border: '1px solid #e2e8f0', borderRadius: '8px' }}>
+                                                    <div style={{ fontSize: '22px', fontWeight: 'bold', color: '#10b981' }}>{presentDays}</div>
+                                                    <div style={{ fontSize: '12px', color: '#64748b', marginTop: '4px' }}>Present</div>
+                                                </div>
+                                                <div style={{ textAlign: 'center', padding: '12px', border: '1px solid #e2e8f0', borderRadius: '8px' }}>
+                                                    <div style={{ fontSize: '22px', fontWeight: 'bold', color: '#f59e0b' }}>{sundayDays}</div>
+                                                    <div style={{ fontSize: '12px', color: '#64748b', marginTop: '4px' }}>Holidays / Sundays</div>
+                                                </div>
+                                                <div style={{ textAlign: 'center', padding: '12px', border: '1px solid #e2e8f0', borderRadius: '8px' }}>
+                                                    <div style={{ fontSize: '22px', fontWeight: 'bold', color: '#ef4444' }}>{absentDays}</div>
+                                                    <div style={{ fontSize: '12px', color: '#64748b', marginTop: '4px' }}>Absent</div>
+                                                </div>
+                                            </div>
+
+                                            <div style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', padding: '20px', borderRadius: '12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                                <div>
+                                                    <h4 style={{ margin: '0 0 5px 0', color: '#166534', fontSize: '16px' }}>Net Payable Amount</h4>
+                                                    <div style={{ fontSize: '13px', color: '#15803d' }}>Calculated for {paidDays.toFixed(2)} equivalent paid days out of {totalDays} generated days</div>
+                                                </div>
+                                                <div style={{ fontSize: '28px', fontWeight: 'bold', color: '#16a34a' }}>
+                                                    ₹ {totalPay.toFixed(2)}
+                                                </div>
+                                            </div>
+                                        </div>
+                                    );
+                                })()}
+                            </div>
+                        )}
+                        {activeTab === 'performance' && (
+                            <div style={{ background: 'white', padding: '25px', borderRadius: '12px', boxShadow: '0 4px 15px rgba(0,0,0,0.02)' }}>
+                                <h3 style={{ margin: '0 0 20px 0', fontSize: '18px', color: '#1f2937' }}>Teacher Daily Attendance Duration (Minutes)</h3>
+                                {data?.records?.length > 0 ? (
+                                    <div style={{ height: '350px', width: '100%' }}>
+                                        <ResponsiveContainer width="100%" height="100%">
+                                            <BarChart data={[...data.records].reverse().map(r => ({ date: r.date.substring(0, 5), duration: r.durationMinutes || 0 }))} margin={{ top: 20, right: 30, left: 0, bottom: 5 }}>
+                                                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f3f4f6" />
+                                                <XAxis dataKey="date" axisLine={false} tickLine={false} tick={{ fill: '#6b7280', fontSize: 12 }} dy={10} />
+                                                <YAxis axisLine={false} tickLine={false} tick={{ fill: '#6b7280', fontSize: 12 }} dx={-10} />
+                                                <Tooltip cursor={{ fill: '#f3f4f6' }} contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 15px rgba(0,0,0,0.1)' }} />
+                                                <Bar dataKey="duration" fill="#22c55e" radius={[6, 6, 0, 0]} barSize={40} />
+                                            </BarChart>
+                                        </ResponsiveContainer>
+                                    </div>
+                                ) : (
+                                    <div style={{ padding: '40px', textAlign: 'center', color: '#94a3b8' }}>No performance data available for this month.</div>
+                                )}
                             </div>
                         )}
                     </div>
@@ -2823,9 +3525,11 @@ const StudentProfilePage = () => {
     const [editForm, setEditForm] = useState({});
     const [activeTab, setActiveTab] = useState('punches');
     const [paymentAmount, setPaymentAmount] = useState('');
+    const [filterMonth, setFilterMonth] = useState(new Date().getMonth() + 1);
+    const [filterYear, setFilterYear] = useState(new Date().getFullYear());
 
-    const fetchStudentData = () => {
-        api.get(`/attendance/student/${id}`)
+    const fetchStudentData = (month = filterMonth, year = filterYear) => {
+        api.get(`/attendance/student/${id}?month=${month}&year=${year}`)
             .then(res => {
                 setData(res.data);
                 setEditForm(res.data.student);
@@ -2898,35 +3602,48 @@ const StudentProfilePage = () => {
         }
     };
 
-    const exportToExcel = () => {
-        if (!data || !data.records) return;
+    const [exportMenuOpen, setExportMenuOpen] = useState(false);
 
-        // Headers
-        const headers = ["Student Name", "Date", "First In", "Last Out", "Duration"];
+    const handleExport = (format) => {
+        if (!data || !data.records || data.records.length === 0) return;
+        
+        const exportData = data.records.map(r => ({
+            "Date": r.date,
+            "In / Out": r.firstIn !== '--:--' ? `${r.firstIn} / ${r.lastOut}` : '--:-- / --:--',
+            "Punches": r.totalEntries || 0,
+            "Total Hours": r.durationMinutes ? `${Math.floor(r.durationMinutes / 60)}h ${r.durationMinutes % 60}m` : '0h 0m',
+            "Status": r.status
+        }));
 
-        const rows = data.records.map(r => {
-            const durationStr = r.durationSeconds !== undefined
-                ? `${Math.floor(r.durationSeconds / 3600)}h ${Math.floor((r.durationSeconds % 3600) / 60)}m ${r.durationSeconds % 60}s`
-                : `${Math.floor(r.durationMinutes / 60)}h ${r.durationMinutes % 60}m`;
+        const sName = (data.student && data.student.name) ? data.student.name : 'Student';
 
-            return [
-                `"${data.student.name}"`,
-                `"${r.date.split('-').reverse().join('/')}"`,
-                `"${r.firstIn}"`,
-                `"${r.lastOut}"`,
-                `"${durationStr}"`
-            ].join(',');
-        });
-
-        const csvContent = [headers.join(','), ...rows].join('\n');
-        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-        const url = URL.createObjectURL(blob);
-        const link = document.createElement("a");
-        link.setAttribute("href", url);
-        link.setAttribute("download", `${data.student.name}_Attendance.csv`);
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
+        if (format === 'excel') {
+            const worksheet = XLSX.utils.json_to_sheet(exportData);
+            const workbook = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(workbook, worksheet, "Punches");
+            XLSX.writeFile(workbook, `${sName}_Punches_${filterMonth}_${filterYear}.xlsx`);
+        } else if (format === 'csv') {
+            const worksheet = XLSX.utils.json_to_sheet(exportData);
+            const csvOutput = XLSX.utils.sheet_to_csv(worksheet);
+            const blob = new Blob([csvOutput], { type: 'text/csv;charset=utf-8;' });
+            const link = document.createElement("a");
+            const url = URL.createObjectURL(blob);
+            link.setAttribute("href", url);
+            link.setAttribute("download", `${sName}_Punches_${filterMonth}_${filterYear}.csv`);
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        } else if (format === 'pdf') {
+            const doc = new jsPDF();
+            doc.text(`${sName} - Punches (${filterMonth}/${filterYear})`, 14, 15);
+            doc.autoTable({
+                head: [['Date', 'In / Out', 'Punches', 'Total Hours', 'Status']],
+                body: exportData.map(r => [r['Date'], r['In / Out'], r['Punches'], r['Total Hours'], r['Status']]),
+                startY: 20
+            });
+            doc.save(`${sName}_Punches_${filterMonth}_${filterYear}.pdf`);
+        }
+        setExportMenuOpen(false);
     };
 
     if (loading) return <div style={{ padding: '40px', textAlign: 'center', fontSize: '18px', color: '#666' }}>Loading Student Profile...</div>;
@@ -2993,17 +3710,6 @@ const StudentProfilePage = () => {
                             <div>
                                 <label style={{ display: 'block', fontSize: '13px', marginBottom: '5px', color: '#4b5563' }}>Full Name</label>
                                 <input name="name" value={editForm.name || ''} onChange={handleEditChange} style={{ width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid #d1d5db', outline: 'none' }} />
-                            </div>
-                            <div>
-                                <label style={{ display: 'block', fontSize: '13px', marginBottom: '5px', color: '#4b5563' }}>Profile Photo</label>
-                                <input type="file" accept="image/*" onChange={(e) => {
-                                    const file = e.target.files[0];
-                                    if (file) {
-                                        const reader = new FileReader();
-                                        reader.onload = (ev) => setEditForm({ ...editForm, photo: ev.target.result });
-                                        reader.readAsDataURL(file);
-                                    }
-                                }} style={{ width: '100%', padding: '7px', borderRadius: '8px', border: '1px solid #d1d5db', outline: 'none', background: 'white' }} />
                             </div>
                             <div>
                                 <label style={{ display: 'block', fontSize: '13px', marginBottom: '5px', color: '#4b5563' }}>Email</label>
@@ -3113,9 +3819,24 @@ const StudentProfilePage = () => {
                                 <div style={{ background: 'white', padding: '25px', borderRadius: '16px', boxShadow: '0 4px 20px rgba(0,0,0,0.05)', display: 'flex', flexDirection: 'column' }}>
                                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
                                         <h3 style={{ margin: 0, fontSize: '18px', color: '#1f2937' }}>Recent Attendance Logs</h3>
-                                        <button onClick={exportToExcel} style={{ background: '#10b981', color: 'white', border: 'none', padding: '8px 16px', borderRadius: '8px', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px', fontSize: '14px' }}>
-                                            <span>📊</span> Export Excel
-                                        </button>
+                                        <div style={{ position: 'relative' }}>
+                                            <button onClick={() => setExportMenuOpen(!exportMenuOpen)} style={{ background: '#f3e8ff', color: '#8b5cf6', border: 'none', padding: '8px 16px', borderRadius: '6px', fontWeight: '600', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px' }}>
+                                                <span>📤</span> Export <span style={{ fontSize: '10px' }}>▼</span>
+                                            </button>
+                                            {exportMenuOpen && (
+                                                <div style={{ position: 'absolute', top: '100%', right: 0, marginTop: '8px', background: 'white', border: '1px solid #e2e8f0', borderRadius: '8px', boxShadow: '0 4px 15px rgba(0,0,0,0.1)', zIndex: 10, minWidth: '150px', overflow: 'hidden' }}>
+                                                    <button onClick={() => handleExport('excel')} style={{ width: '100%', padding: '12px 16px', border: 'none', background: 'white', textAlign: 'left', cursor: 'pointer', fontSize: '13px', color: '#475569', display: 'flex', alignItems: 'center', gap: '10px', borderBottom: '1px solid #f1f5f9' }}>
+                                                        <span style={{ color: '#10b981' }}>📊</span> Excel (.xlsx)
+                                                    </button>
+                                                    <button onClick={() => handleExport('csv')} style={{ width: '100%', padding: '12px 16px', border: 'none', background: 'white', textAlign: 'left', cursor: 'pointer', fontSize: '13px', color: '#475569', display: 'flex', alignItems: 'center', gap: '10px', borderBottom: '1px solid #f1f5f9' }}>
+                                                        <span style={{ color: '#f59e0b' }}>📝</span> CSV (.csv)
+                                                    </button>
+                                                    <button onClick={() => handleExport('pdf')} style={{ width: '100%', padding: '12px 16px', border: 'none', background: 'white', textAlign: 'left', cursor: 'pointer', fontSize: '13px', color: '#475569', display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                                        <span style={{ color: '#ef4444' }}>📄</span> PDF (.pdf)
+                                                    </button>
+                                                </div>
+                                            )}
+                                        </div>
                                     </div>
                                     <div style={{ flex: 1, overflowY: 'auto', maxHeight: '350px', paddingRight: '10px' }}>
                                         {records.length > 0 ? (
@@ -3126,6 +3847,7 @@ const StudentProfilePage = () => {
                                                         <th style={{ padding: '12px 8px', fontWeight: 600 }}>First In</th>
                                                         <th style={{ padding: '12px 8px', fontWeight: 600 }}>Last Out</th>
                                                         <th style={{ padding: '12px 8px', fontWeight: 600 }}>Duration</th>
+                                                        <th style={{ padding: '12px 8px', fontWeight: 600 }}>Status</th>
                                                     </tr>
                                                 </thead>
                                                 <tbody>
@@ -3138,6 +3860,17 @@ const StudentProfilePage = () => {
                                                                 {r.durationSeconds !== undefined
                                                                     ? `${Math.floor(r.durationSeconds / 3600)}h ${Math.floor((r.durationSeconds % 3600) / 60)}m ${r.durationSeconds % 60}s`
                                                                     : `${Math.floor(r.durationMinutes / 60)}h ${r.durationMinutes % 60}m`}
+                                                            </td>
+                                                            <td style={{ padding: '14px 8px' }}>
+                                                                {r.status === 'Late' ? (
+                                                                    <span style={{ background: '#fef5e7', color: '#e67e22', padding: '4px 10px', borderRadius: '6px', fontSize: '12px', fontWeight: '600' }}>Late</span>
+                                                                ) : r.status === 'Absent' ? (
+                                                                    <span style={{ background: '#fef2f2', color: '#ef4444', padding: '4px 10px', borderRadius: '6px', fontSize: '12px', fontWeight: '600' }}>Absent</span>
+                                                                ) : r.status === 'Sunday' ? (
+                                                                    <span style={{ background: '#f8fafc', color: '#64748b', padding: '4px 10px', borderRadius: '6px', fontSize: '12px', fontWeight: '600' }}>Sunday</span>
+                                                                ) : (
+                                                                    <span style={{ color: '#10b981', fontWeight: '600', fontSize: '13px' }}>Present</span>
+                                                                )}
                                                             </td>
                                                         </tr>
                                                     ))}
@@ -3246,6 +3979,7 @@ function App() {
                         <Route path="/" element={<ProtectedRoute><Layout logout={logout} user={user}><Dashboard /></Layout></ProtectedRoute>} />
                         <Route path="/attendance" element={<ProtectedRoute><Layout logout={logout} user={user}><AttendancePage /></Layout></ProtectedRoute>} />
                         <Route path="/admissions" element={<ProtectedRoute><Layout logout={logout} user={user}><AdmissionsPage /></Layout></ProtectedRoute>} />
+                        <Route path="/bulk-upload" element={<ProtectedRoute><Layout logout={logout} user={user}><BulkUploadPage /></Layout></ProtectedRoute>} />
                         <Route path="/enroll-student" element={<ProtectedRoute><Layout logout={logout} user={user}><EnrollStudentPage /></Layout></ProtectedRoute>} />
                         <Route path="/birthdays" element={<ProtectedRoute><Layout logout={logout} user={user}><BirthdaysPage /></Layout></ProtectedRoute>} />
                         <Route path="/teachers" element={<ProtectedRoute><Layout logout={logout} user={user}><TeachersPage /></Layout></ProtectedRoute>} />
@@ -3253,6 +3987,7 @@ function App() {
                         <Route path="/simulator" element={<ProtectedRoute><Layout logout={logout} user={user}><Simulator /></Layout></ProtectedRoute>} />
                         <Route path="/enquiries/new" element={<ProtectedRoute><Layout logout={logout} user={user}><NewEnquiryPage /></Layout></ProtectedRoute>} />
                         <Route path="/student/:id" element={<ProtectedRoute><Layout logout={logout} user={user}><StudentProfilePage /></Layout></ProtectedRoute>} />
+                        <Route path="/teacher/:id" element={<ProtectedRoute><Layout logout={logout} user={user}><TeacherProfilePage /></Layout></ProtectedRoute>} />
                         <Route path="*" element={<Navigate to="/" replace />} />
                     </Routes>
                 )}
