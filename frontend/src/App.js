@@ -4,7 +4,9 @@ import ReceiptPrintView from './ReceiptPrintView';
 import { io } from 'socket.io-client';
 import api from './api';
 import logo from './logo.jpeg';
-import { ResponsiveContainer, BarChart, CartesianGrid, XAxis, YAxis, Tooltip, Bar } from 'recharts';
+import * as XLSX from 'xlsx';
+import jsPDF from 'jspdf';
+import 'jspdf-autotable';
 
 const backendHost = window.location.hostname;
 const socket = io(`http://${backendHost}:8080`);
@@ -30,23 +32,23 @@ const Login = () => {
     return (
         <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh', background: '#f0f2f5' }}>
             <div style={{ background: 'white', padding: '40px', borderRadius: '12px', width: '350px', textAlign: 'center', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}>
-        <h1 style={{ marginBottom: '10px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px' }}>
-          <img src={logo} alt="BioAttend Logo" style={{ height: '48px', width: '48px', borderRadius: '6px', objectFit: 'cover' }} />
-          BioAttend
-        </h1>
-        <p style={{ color: '#666', marginBottom: '20px' }}>Admin Login</p>
-        <form onSubmit={handleSubmit}>
-          <input type="email" placeholder="Email" value={email} onChange={(e) => setEmail(e.target.value)} style={{ width: '100%', padding: '12px', marginBottom: '15px', borderRadius: '6px', border: '1px solid #ddd', fontSize: '14px', boxSizing: 'border-box' }} required />
-          <input type="password" placeholder="Password" value={password} onChange={(e) => setPassword(e.target.value)} style={{ width: '100%', padding: '12px', marginBottom: '15px', borderRadius: '6px', border: '1px solid #ddd', fontSize: '14px', boxSizing: 'border-box' }} required />
-          {error && <div style={{ color: '#e74c3c', fontSize: '14px', marginBottom: '10px' }}>{error}</div>}
-          <button type="submit" style={{ width: '100%', padding: '12px', borderRadius: '6px', border: 'none', background: '#667eea', color: 'white', fontSize: '16px', fontWeight: 'bold', cursor: 'pointer' }} disabled={loading}>
-            {loading ? 'Logging in...' : 'Login'}
-          </button>
-        </form>
-        <div style={{ marginTop: '15px', fontSize: '12px', color: '#999' }}>Demo: admin@school.com / admin123</div>
-      </div >
-    </div >
-  );
+                <h1 style={{ marginBottom: '10px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px' }}>
+                    <img src={logo} alt="BioAttend Logo" style={{ height: '48px', width: '48px', borderRadius: '6px', objectFit: 'cover' }} />
+                    BioAttend
+                </h1>
+                <p style={{ color: '#666', marginBottom: '20px' }}>Admin Login</p>
+                <form onSubmit={handleSubmit}>
+                    <input type="email" placeholder="Email" value={email} onChange={(e) => setEmail(e.target.value)} style={{ width: '100%', padding: '12px', marginBottom: '15px', borderRadius: '6px', border: '1px solid #ddd', fontSize: '14px', boxSizing: 'border-box' }} required />
+                    <input type="password" placeholder="Password" value={password} onChange={(e) => setPassword(e.target.value)} style={{ width: '100%', padding: '12px', marginBottom: '15px', borderRadius: '6px', border: '1px solid #ddd', fontSize: '14px', boxSizing: 'border-box' }} required />
+                    {error && <div style={{ color: '#e74c3c', fontSize: '14px', marginBottom: '10px' }}>{error}</div>}
+                    <button type="submit" style={{ width: '100%', padding: '12px', borderRadius: '6px', border: 'none', background: '#667eea', color: 'white', fontSize: '16px', fontWeight: 'bold', cursor: 'pointer' }} disabled={loading}>
+                        {loading ? 'Logging in...' : 'Login'}
+                    </button>
+                </form>
+                <div style={{ marginTop: '15px', fontSize: '12px', color: '#999' }}>Demo: admin@school.com / admin123</div>
+            </div >
+        </div >
+    );
 };
 
 // --- PROTECTED ROUTE ---
@@ -66,102 +68,102 @@ const Sidebar = ({ logout, user }) => {
     const [insOpen, setInsOpen] = useState(false);
     return (
         <div style={{ width: '250px', background: '#2c3e50', minHeight: '100vh', color: 'white' }}>
-      <h2 style={{ color: 'white', padding: '20px', margin: 0, display: 'flex', alignItems: 'center', gap: '10px' }}>
-        <img src={logo} alt="BioAttend Logo" style={{ height: '42px', width: '42px', borderRadius: '4px', objectFit: 'cover' }} />
-        BioAttend
-      </h2>
-      <div style={{ padding: '0 20px 20px', color: '#bdc3c7', fontSize: '14px' }}>Welcome, <strong style={{ color: '#ffffff' }}>{user?.name}</strong></div>
-      <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
-        <li><Link to="/" style={{ display: 'block', padding: '15px 20px', color: '#ffffff', textDecoration: 'none', borderBottom: '1px solid #34495e', fontWeight: '500', fontSize: '15px' }}>📈 Dashboard</Link></li>
+            <h2 style={{ color: 'white', padding: '20px', margin: 0, display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <img src={logo} alt="BioAttend Logo" style={{ height: '42px', width: '42px', borderRadius: '4px', objectFit: 'cover' }} />
+                BioAttend
+            </h2>
+            <div style={{ padding: '0 20px 20px', color: '#bdc3c7', fontSize: '14px' }}>Welcome, <strong style={{ color: '#ffffff' }}>{user?.name}</strong></div>
+            <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
+                <li><Link to="/" style={{ display: 'block', padding: '15px 20px', color: '#ffffff', textDecoration: 'none', borderBottom: '1px solid #34495e', fontWeight: '500', fontSize: '15px' }}>📈 Dashboard</Link></li>
 
 
 
-    {/* Admissions Dropdown */ }
-    <li>
-        <div onClick={() => setAdmOpen(!admOpen)} style={{ display: 'flex', justifyContent: 'space-between', padding: '15px 20px', color: '#ffffff', cursor: 'pointer', borderBottom: '1px solid #34495e', background: admOpen ? '#34495e' : 'transparent', fontWeight: '500', fontSize: '15px' }}>
-            <span>📝 Admissions</span>
-            <span>{admOpen ? '▲' : '▼'}</span>
-        </div>
-        {admOpen && (
-            <ul style={{ listStyle: 'none', padding: 0, margin: 0, background: '#1a252f' }}>
-                <li><Link to="/enroll-student" style={{ display: 'block', padding: '12px 20px 12px 40px', color: '#ecf0f1', textDecoration: 'none', fontSize: '14px', borderBottom: '1px solid #2c3e50', fontWeight: '400' }}>○ Enroll Student</Link></li>
-                <li><Link to="/admissions" style={{ display: 'block', padding: '12px 20px 12px 40px', color: '#ecf0f1', textDecoration: 'none', fontSize: '14px', borderBottom: '1px solid #2c3e50', fontWeight: '400' }}>○ Bulk Upload</Link></li>
-                <li><Link to="/admissions" style={{ display: 'block', padding: '12px 20px 12px 40px', color: '#ecf0f1', textDecoration: 'none', fontSize: '14px', borderBottom: '1px solid #2c3e50', fontWeight: '400' }}>○ Student List</Link></li>
-                <li><Link to="/birthdays" style={{ display: 'block', padding: '12px 20px 12px 40px', color: '#ecf0f1', textDecoration: 'none', fontSize: '14px', borderBottom: '1px solid #2c3e50', fontWeight: '400' }}>○ Birthday Reminders</Link></li>
-            </ul>
-        )}
-    </li>
+                {/* Admissions Dropdown */}
+                <li>
+                    <div onClick={() => setAdmOpen(!admOpen)} style={{ display: 'flex', justifyContent: 'space-between', padding: '15px 20px', color: '#ffffff', cursor: 'pointer', borderBottom: '1px solid #34495e', background: admOpen ? '#34495e' : 'transparent', fontWeight: '500', fontSize: '15px' }}>
+                        <span>📝 Admissions</span>
+                        <span>{admOpen ? '▲' : '▼'}</span>
+                    </div>
+                    {admOpen && (
+                        <ul style={{ listStyle: 'none', padding: 0, margin: 0, background: '#1a252f' }}>
+                            <li><Link to="/enroll-student" style={{ display: 'block', padding: '12px 20px 12px 40px', color: '#ecf0f1', textDecoration: 'none', fontSize: '14px', borderBottom: '1px solid #2c3e50', fontWeight: '400' }}>○ Enroll Student</Link></li>
+                            <li><Link to="/admissions" style={{ display: 'block', padding: '12px 20px 12px 40px', color: '#ecf0f1', textDecoration: 'none', fontSize: '14px', borderBottom: '1px solid #2c3e50', fontWeight: '400' }}>○ Bulk Upload</Link></li>
+                            <li><Link to="/admissions" style={{ display: 'block', padding: '12px 20px 12px 40px', color: '#ecf0f1', textDecoration: 'none', fontSize: '14px', borderBottom: '1px solid #2c3e50', fontWeight: '400' }}>○ Student List</Link></li>
+                            <li><Link to="/birthdays" style={{ display: 'block', padding: '12px 20px 12px 40px', color: '#ecf0f1', textDecoration: 'none', fontSize: '14px', borderBottom: '1px solid #2c3e50', fontWeight: '400' }}>○ Birthday Reminders</Link></li>
+                        </ul>
+                    )}
+                </li>
 
-    {/* Academics Dropdown */ }
-    <li>
-        <div onClick={() => setAcadOpen(!acadOpen)} style={{ display: 'flex', justifyContent: 'space-between', padding: '15px 20px', color: '#ffffff', cursor: 'pointer', borderBottom: '1px solid #34495e', background: acadOpen ? '#34495e' : 'transparent', fontWeight: '500', fontSize: '15px' }}>
-            <span>🎓 Academics</span>
-            <span>{acadOpen ? '▲' : '▼'}</span>
-        </div>
-        {acadOpen && (
-            <ul style={{ listStyle: 'none', padding: 0, margin: 0, background: '#1a252f' }}>
-                <li><Link to="/academics" style={{ display: 'block', padding: '12px 20px 12px 40px', color: '#ecf0f1', textDecoration: 'none', fontSize: '14px', borderBottom: '1px solid #2c3e50', fontWeight: '400' }}>○ Planner</Link></li>
-                <li><Link to="/academics" style={{ display: 'block', padding: '12px 20px 12px 40px', color: '#ecf0f1', textDecoration: 'none', fontSize: '14px', borderBottom: '1px solid #2c3e50', fontWeight: '400' }}>○ Timeline</Link></li>
-                <li><Link to="/academics" style={{ display: 'block', padding: '12px 20px 12px 40px', color: '#ecf0f1', textDecoration: 'none', fontSize: '14px', borderBottom: '1px solid #2c3e50', fontWeight: '400' }}>○ Punches</Link></li>
-                <li><Link to="/academics" style={{ display: 'block', padding: '12px 20px 12px 40px', color: '#ecf0f1', textDecoration: 'none', fontSize: '14px', borderBottom: '1px solid #2c3e50', fontWeight: '400' }}>○ Lectures</Link></li>
-                <li><Link to="/academics" style={{ display: 'block', padding: '12px 20px 12px 40px', color: '#ecf0f1', textDecoration: 'none', fontSize: '14px', borderBottom: '1px solid #2c3e50', fontWeight: '400' }}>○ Exams</Link></li>
-                <li><Link to="/academics" style={{ display: 'block', padding: '12px 20px 12px 40px', color: '#ecf0f1', textDecoration: 'none', fontSize: '14px', borderBottom: '1px solid #2c3e50', fontWeight: '400' }}>○ Paper Tracker</Link></li>
-                <li><Link to="/academics" style={{ display: 'block', padding: '12px 20px 12px 40px', color: '#ecf0f1', textDecoration: 'none', fontSize: '14px', borderBottom: '1px solid #2c3e50', fontWeight: '400' }}>○ Exam Report</Link></li>
-                <li><Link to="/academics" style={{ display: 'block', padding: '12px 20px 12px 40px', color: '#ecf0f1', textDecoration: 'none', fontSize: '14px', borderBottom: '1px solid #2c3e50', fontWeight: '400' }}>○ Syllabus Deadlines</Link></li>
-                <li><Link to="/academics" style={{ display: 'block', padding: '12px 20px 12px 40px', color: '#ecf0f1', textDecoration: 'none', fontSize: '14px', borderBottom: '1px solid #2c3e50', fontWeight: '400' }}>○ Syllabus Tracker</Link></li>
-                <li><Link to="/academics" style={{ display: 'block', padding: '12px 20px 12px 40px', color: '#ecf0f1', textDecoration: 'none', fontSize: '14px', borderBottom: '1px solid #2c3e50', fontWeight: '400' }}>○ Assignments</Link></li>
-            </ul>
-        )}
-    </li>
+                {/* Academics Dropdown */}
+                <li>
+                    <div onClick={() => setAcadOpen(!acadOpen)} style={{ display: 'flex', justifyContent: 'space-between', padding: '15px 20px', color: '#ffffff', cursor: 'pointer', borderBottom: '1px solid #34495e', background: acadOpen ? '#34495e' : 'transparent', fontWeight: '500', fontSize: '15px' }}>
+                        <span>🎓 Academics</span>
+                        <span>{acadOpen ? '▲' : '▼'}</span>
+                    </div>
+                    {acadOpen && (
+                        <ul style={{ listStyle: 'none', padding: 0, margin: 0, background: '#1a252f' }}>
+                            <li><Link to="/academics" style={{ display: 'block', padding: '12px 20px 12px 40px', color: '#ecf0f1', textDecoration: 'none', fontSize: '14px', borderBottom: '1px solid #2c3e50', fontWeight: '400' }}>○ Planner</Link></li>
+                            <li><Link to="/academics" style={{ display: 'block', padding: '12px 20px 12px 40px', color: '#ecf0f1', textDecoration: 'none', fontSize: '14px', borderBottom: '1px solid #2c3e50', fontWeight: '400' }}>○ Timeline</Link></li>
+                            <li><Link to="/academics" style={{ display: 'block', padding: '12px 20px 12px 40px', color: '#ecf0f1', textDecoration: 'none', fontSize: '14px', borderBottom: '1px solid #2c3e50', fontWeight: '400' }}>○ Punches</Link></li>
+                            <li><Link to="/academics" style={{ display: 'block', padding: '12px 20px 12px 40px', color: '#ecf0f1', textDecoration: 'none', fontSize: '14px', borderBottom: '1px solid #2c3e50', fontWeight: '400' }}>○ Lectures</Link></li>
+                            <li><Link to="/academics" style={{ display: 'block', padding: '12px 20px 12px 40px', color: '#ecf0f1', textDecoration: 'none', fontSize: '14px', borderBottom: '1px solid #2c3e50', fontWeight: '400' }}>○ Exams</Link></li>
+                            <li><Link to="/academics" style={{ display: 'block', padding: '12px 20px 12px 40px', color: '#ecf0f1', textDecoration: 'none', fontSize: '14px', borderBottom: '1px solid #2c3e50', fontWeight: '400' }}>○ Paper Tracker</Link></li>
+                            <li><Link to="/academics" style={{ display: 'block', padding: '12px 20px 12px 40px', color: '#ecf0f1', textDecoration: 'none', fontSize: '14px', borderBottom: '1px solid #2c3e50', fontWeight: '400' }}>○ Exam Report</Link></li>
+                            <li><Link to="/academics" style={{ display: 'block', padding: '12px 20px 12px 40px', color: '#ecf0f1', textDecoration: 'none', fontSize: '14px', borderBottom: '1px solid #2c3e50', fontWeight: '400' }}>○ Syllabus Deadlines</Link></li>
+                            <li><Link to="/academics" style={{ display: 'block', padding: '12px 20px 12px 40px', color: '#ecf0f1', textDecoration: 'none', fontSize: '14px', borderBottom: '1px solid #2c3e50', fontWeight: '400' }}>○ Syllabus Tracker</Link></li>
+                            <li><Link to="/academics" style={{ display: 'block', padding: '12px 20px 12px 40px', color: '#ecf0f1', textDecoration: 'none', fontSize: '14px', borderBottom: '1px solid #2c3e50', fontWeight: '400' }}>○ Assignments</Link></li>
+                        </ul>
+                    )}
+                </li>
 
-    {/* Finances Dropdown */ }
-    <li>
-        <div onClick={() => setFinOpen(!finOpen)} style={{ display: 'flex', justifyContent: 'space-between', padding: '15px 20px', color: '#ffffff', cursor: 'pointer', borderBottom: '1px solid #34495e', background: finOpen ? '#34495e' : 'transparent', fontWeight: '500', fontSize: '15px' }}>
-            <span>💰 Finances</span>
-            <span>{finOpen ? '▲' : '▼'}</span>
-        </div>
-        {finOpen && (
-            <ul style={{ listStyle: 'none', padding: 0, margin: 0, background: '#1a252f' }}>
-                <li><Link to="/finances" style={{ display: 'block', padding: '12px 20px 12px 40px', color: '#ecf0f1', textDecoration: 'none', fontSize: '14px', borderBottom: '1px solid #2c3e50', fontWeight: '400' }}>○ Cleared Fees</Link></li>
-                <li><Link to="/finances" style={{ display: 'block', padding: '12px 20px 12px 40px', color: '#ecf0f1', textDecoration: 'none', fontSize: '14px', borderBottom: '1px solid #2c3e50', fontWeight: '400' }}>○ Overdues</Link></li>
-                <li><Link to="/finances" style={{ display: 'block', padding: '12px 20px 12px 40px', color: '#ecf0f1', textDecoration: 'none', fontSize: '14px', borderBottom: '1px solid #2c3e50', fontWeight: '400' }}>○ Outstanding</Link></li>
-                <li><Link to="/finances" style={{ display: 'block', padding: '12px 20px 12px 40px', color: '#ecf0f1', textDecoration: 'none', fontSize: '14px', borderBottom: '1px solid #2c3e50', fontWeight: '400' }}>○ Unverified</Link></li>
-                <li><Link to="/finances" style={{ display: 'block', padding: '12px 20px 12px 40px', color: '#ecf0f1', textDecoration: 'none', fontSize: '14px', borderBottom: '1px solid #2c3e50', fontWeight: '400' }}>○ Unscheduled</Link></li>
-                <li><Link to="/finances" style={{ display: 'block', padding: '12px 20px 12px 40px', color: '#ecf0f1', textDecoration: 'none', fontSize: '14px', borderBottom: '1px solid #2c3e50', fontWeight: '400' }}>○ PDCs</Link></li>
-                <li><Link to="/finances" style={{ display: 'block', padding: '12px 20px 12px 40px', color: '#ecf0f1', textDecoration: 'none', fontSize: '14px', borderBottom: '1px solid #2c3e50', fontWeight: '400' }}>○ Transactions</Link></li>
-                <li><Link to="/finances" style={{ display: 'block', padding: '12px 20px 12px 40px', color: '#ecf0f1', textDecoration: 'none', fontSize: '14px', borderBottom: '1px solid #2c3e50', fontWeight: '400' }}>○ Daily Expenses</Link></li>
-            </ul>
-        )}
-    </li>
+                {/* Finances Dropdown */}
+                <li>
+                    <div onClick={() => setFinOpen(!finOpen)} style={{ display: 'flex', justifyContent: 'space-between', padding: '15px 20px', color: '#ffffff', cursor: 'pointer', borderBottom: '1px solid #34495e', background: finOpen ? '#34495e' : 'transparent', fontWeight: '500', fontSize: '15px' }}>
+                        <span>💰 Finances</span>
+                        <span>{finOpen ? '▲' : '▼'}</span>
+                    </div>
+                    {finOpen && (
+                        <ul style={{ listStyle: 'none', padding: 0, margin: 0, background: '#1a252f' }}>
+                            <li><Link to="/finances" style={{ display: 'block', padding: '12px 20px 12px 40px', color: '#ecf0f1', textDecoration: 'none', fontSize: '14px', borderBottom: '1px solid #2c3e50', fontWeight: '400' }}>○ Cleared Fees</Link></li>
+                            <li><Link to="/finances" style={{ display: 'block', padding: '12px 20px 12px 40px', color: '#ecf0f1', textDecoration: 'none', fontSize: '14px', borderBottom: '1px solid #2c3e50', fontWeight: '400' }}>○ Overdues</Link></li>
+                            <li><Link to="/finances" style={{ display: 'block', padding: '12px 20px 12px 40px', color: '#ecf0f1', textDecoration: 'none', fontSize: '14px', borderBottom: '1px solid #2c3e50', fontWeight: '400' }}>○ Outstanding</Link></li>
+                            <li><Link to="/finances" style={{ display: 'block', padding: '12px 20px 12px 40px', color: '#ecf0f1', textDecoration: 'none', fontSize: '14px', borderBottom: '1px solid #2c3e50', fontWeight: '400' }}>○ Unverified</Link></li>
+                            <li><Link to="/finances" style={{ display: 'block', padding: '12px 20px 12px 40px', color: '#ecf0f1', textDecoration: 'none', fontSize: '14px', borderBottom: '1px solid #2c3e50', fontWeight: '400' }}>○ Unscheduled</Link></li>
+                            <li><Link to="/finances" style={{ display: 'block', padding: '12px 20px 12px 40px', color: '#ecf0f1', textDecoration: 'none', fontSize: '14px', borderBottom: '1px solid #2c3e50', fontWeight: '400' }}>○ PDCs</Link></li>
+                            <li><Link to="/finances" style={{ display: 'block', padding: '12px 20px 12px 40px', color: '#ecf0f1', textDecoration: 'none', fontSize: '14px', borderBottom: '1px solid #2c3e50', fontWeight: '400' }}>○ Transactions</Link></li>
+                            <li><Link to="/finances" style={{ display: 'block', padding: '12px 20px 12px 40px', color: '#ecf0f1', textDecoration: 'none', fontSize: '14px', borderBottom: '1px solid #2c3e50', fontWeight: '400' }}>○ Daily Expenses</Link></li>
+                        </ul>
+                    )}
+                </li>
 
-    {/* Insights Dropdown */ }
-        <li>
-          <div onClick={() => setInsOpen(!insOpen)} style={{ display: 'flex', justifyContent: 'space-between', padding: '15px 20px', color: '#ffffff', cursor: 'pointer', borderBottom: '1px solid #34495e', background: insOpen ? '#34495e' : 'transparent', fontWeight: '500', fontSize: '15px' }}>
-            <span>📊 Insights</span>
-            <span>{insOpen ? '▲' : '▼'}</span>
-          </div>
-          {insOpen && (
-            <ul style={{ listStyle: 'none', padding: 0, margin: 0, background: '#1a252f' }}>
-              <li><Link to="/insights" style={{ display: 'block', padding: '12px 20px 12px 40px', color: '#ecf0f1', textDecoration: 'none', fontSize: '14px', borderBottom: '1px solid #2c3e50', fontWeight: '400' }}>○ Syllabus Report</Link></li>
-              <li><Link to="/insights" style={{ display: 'block', padding: '12px 20px 12px 40px', color: '#ecf0f1', textDecoration: 'none', fontSize: '14px', borderBottom: '1px solid #2c3e50', fontWeight: '400' }}>○ Course Report</Link></li>
-              <li><Link to="/insights" style={{ display: 'block', padding: '12px 20px 12px 40px', color: '#ecf0f1', textDecoration: 'none', fontSize: '14px', borderBottom: '1px solid #2c3e50', fontWeight: '400' }}>○ Batch Report</Link></li>
-              <li><Link to="/insights" style={{ display: 'block', padding: '12px 20px 12px 40px', color: '#ecf0f1', textDecoration: 'none', fontSize: '14px', borderBottom: '1px solid #2c3e50', fontWeight: '400' }}>○ Student Report</Link></li>
-              <li><Link to="/insights" style={{ display: 'block', padding: '12px 20px 12px 40px', color: '#ecf0f1', textDecoration: 'none', fontSize: '14px', borderBottom: '1px solid #2c3e50', fontWeight: '400' }}>○ Revenue Report</Link></li>
-              <li><Link to="/insights" style={{ display: 'block', padding: '12px 20px 12px 40px', color: '#ecf0f1', textDecoration: 'none', fontSize: '14px', borderBottom: '1px solid #2c3e50', fontWeight: '400' }}>○ Cashflow Report</Link></li>
-            </ul>
-          )}
-        </li>
+                {/* Insights Dropdown */}
+                <li>
+                    <div onClick={() => setInsOpen(!insOpen)} style={{ display: 'flex', justifyContent: 'space-between', padding: '15px 20px', color: '#ffffff', cursor: 'pointer', borderBottom: '1px solid #34495e', background: insOpen ? '#34495e' : 'transparent', fontWeight: '500', fontSize: '15px' }}>
+                        <span>📊 Insights</span>
+                        <span>{insOpen ? '▲' : '▼'}</span>
+                    </div>
+                    {insOpen && (
+                        <ul style={{ listStyle: 'none', padding: 0, margin: 0, background: '#1a252f' }}>
+                            <li><Link to="/insights" style={{ display: 'block', padding: '12px 20px 12px 40px', color: '#ecf0f1', textDecoration: 'none', fontSize: '14px', borderBottom: '1px solid #2c3e50', fontWeight: '400' }}>○ Syllabus Report</Link></li>
+                            <li><Link to="/insights" style={{ display: 'block', padding: '12px 20px 12px 40px', color: '#ecf0f1', textDecoration: 'none', fontSize: '14px', borderBottom: '1px solid #2c3e50', fontWeight: '400' }}>○ Course Report</Link></li>
+                            <li><Link to="/insights" style={{ display: 'block', padding: '12px 20px 12px 40px', color: '#ecf0f1', textDecoration: 'none', fontSize: '14px', borderBottom: '1px solid #2c3e50', fontWeight: '400' }}>○ Batch Report</Link></li>
+                            <li><Link to="/insights" style={{ display: 'block', padding: '12px 20px 12px 40px', color: '#ecf0f1', textDecoration: 'none', fontSize: '14px', borderBottom: '1px solid #2c3e50', fontWeight: '400' }}>○ Student Report</Link></li>
+                            <li><Link to="/insights" style={{ display: 'block', padding: '12px 20px 12px 40px', color: '#ecf0f1', textDecoration: 'none', fontSize: '14px', borderBottom: '1px solid #2c3e50', fontWeight: '400' }}>○ Revenue Report</Link></li>
+                            <li><Link to="/insights" style={{ display: 'block', padding: '12px 20px 12px 40px', color: '#ecf0f1', textDecoration: 'none', fontSize: '14px', borderBottom: '1px solid #2c3e50', fontWeight: '400' }}>○ Cashflow Report</Link></li>
+                        </ul>
+                    )}
+                </li>
 
-        <li><Link to="/attendance" style={{ display: 'block', padding: '15px 20px', color: '#ffffff', textDecoration: 'none', borderBottom: '1px solid #34495e', fontWeight: '500', fontSize: '15px' }}>📋 Attendance</Link></li>
-        <li><Link to="/teachers" style={{ display: 'block', padding: '15px 20px', color: '#ffffff', textDecoration: 'none', borderBottom: '1px solid #34495e', fontWeight: '500', fontSize: '15px' }}>👨‍🏫 Teachers & Staff</Link></li>
-        <li><Link to="/devices" style={{ display: 'block', padding: '15px 20px', color: '#ffffff', textDecoration: 'none', borderBottom: '1px solid #34495e', fontWeight: '500', fontSize: '15px' }}>🔒 Devices</Link></li>
-        <li><Link to="/simulator" style={{ display: 'block', padding: '15px 20px', color: '#ffffff', textDecoration: 'none', borderBottom: '1px solid #34495e', fontWeight: '500', fontSize: '15px' }}>🔬 Simulator</Link></li>
-        <li style={{ padding: '15px 20px' }}>
-          <button onClick={logout} style={{ padding: '8px 16px', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '15px', fontWeight: '500', background: '#e74c3c', color: 'white', width: '100%' }}>🚪 Logout</button>
-        </li>
-      </ul >
-    </div >
-  );
+                <li><Link to="/attendance" style={{ display: 'block', padding: '15px 20px', color: '#ffffff', textDecoration: 'none', borderBottom: '1px solid #34495e', fontWeight: '500', fontSize: '15px' }}>📋 Attendance</Link></li>
+                <li><Link to="/teachers" style={{ display: 'block', padding: '15px 20px', color: '#ffffff', textDecoration: 'none', borderBottom: '1px solid #34495e', fontWeight: '500', fontSize: '15px' }}>👨‍🏫 Teachers & Staff</Link></li>
+                <li><Link to="/devices" style={{ display: 'block', padding: '15px 20px', color: '#ffffff', textDecoration: 'none', borderBottom: '1px solid #34495e', fontWeight: '500', fontSize: '15px' }}>🔒 Devices</Link></li>
+                <li><Link to="/simulator" style={{ display: 'block', padding: '15px 20px', color: '#ffffff', textDecoration: 'none', borderBottom: '1px solid #34495e', fontWeight: '500', fontSize: '15px' }}>🔬 Simulator</Link></li>
+                <li style={{ padding: '15px 20px' }}>
+                    <button onClick={logout} style={{ padding: '8px 16px', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '15px', fontWeight: '500', background: '#e74c3c', color: 'white', width: '100%' }}>🚪 Logout</button>
+                </li>
+            </ul >
+        </div >
+    );
 };
 
 const Layout = ({ children, logout, user }) => (
@@ -170,30 +172,30 @@ const Layout = ({ children, logout, user }) => (
         <div style={{ flex: 1, padding: '20px', overflowX: 'hidden' }}>
             <div className="header">
                 <div>
-            <h1 style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-              <img src={logo} alt="BioAttend Logo" style={{ height: '48px', width: '48px', borderRadius: '6px', objectFit: 'cover' }} />
-              BioAttend Pro
-            </h1>
-            <span style={{ fontSize: '14px', opacity: 0.8 }}>Biometric Attendance Management System</span>
+                    <h1 style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                        <img src={logo} alt="BioAttend Logo" style={{ height: '48px', width: '48px', borderRadius: '6px', objectFit: 'cover' }} />
+                        BioAttend Pro
+                    </h1>
+                    <span style={{ fontSize: '14px', opacity: 0.8 }}>Biometric Attendance Management System</span>
+                </div >
+                <div className="header-actions">
+                    <div className="badge" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '2px', cursor: 'pointer' }} onClick={logout}>
+                        <span style={{ fontSize: '16px', lineHeight: '1' }}>👤</span>
+                        <span style={{ fontSize: '12px', lineHeight: '1' }}>{user?.name || 'Admin'}</span>
+                    </div>
+                    <div className="badge" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '2px' }}>
+                        <span style={{ fontSize: '16px', lineHeight: '1' }}>📅</span>
+                        <span style={{ fontSize: '12px', lineHeight: '1' }}>{new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })}</span>
+                    </div>
+                    <div className="badge" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '2px' }}>
+                        <span style={{ fontSize: '16px', lineHeight: '1' }}>🔄</span>
+                        <span style={{ fontSize: '12px', lineHeight: '1' }}>Live • {new Date().toLocaleTimeString()}</span>
+                    </div>
+                </div>
+            </div >
+            {children}
         </div >
-    <div className="header-actions">
-        <div className="badge" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '2px', cursor: 'pointer' }} onClick={logout}>
-            <span style={{ fontSize: '16px', lineHeight: '1' }}>👤</span>
-            <span style={{ fontSize: '12px', lineHeight: '1' }}>{user?.name || 'Admin'}</span>
-        </div>
-        <div className="badge" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '2px' }}>
-            <span style={{ fontSize: '16px', lineHeight: '1' }}>📅</span>
-            <span style={{ fontSize: '12px', lineHeight: '1' }}>{new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })}</span>
-        </div>
-        <div className="badge" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '2px' }}>
-            <span style={{ fontSize: '16px', lineHeight: '1' }}>🔄</span>
-            <span style={{ fontSize: '12px', lineHeight: '1' }}>Live • {new Date().toLocaleTimeString()}</span>
-        </div>
-    </div>
-      </div >
-    { children }
     </div >
-  </div >
 );
 
 // --- PAGES ---
@@ -205,9 +207,9 @@ const Dashboard = () => {
 
     const [lastScanToast, setLastScanToast] = useState(null);
     const toastRef = React.useRef(null);
-    
+
     const [editAttendance, setEditAttendance] = useState(null);
-    
+
     const handleSaveAttendance = async () => {
         try {
             await api.put('/attendance/update', {
@@ -240,7 +242,7 @@ const Dashboard = () => {
         const handlePunch = (data) => {
             const entry = { ...data, id: Date.now(), time: new Date().toLocaleTimeString() };
             setLivePunches(prev => [entry, ...prev].slice(0, 10));
-            
+
             setRecent(prev => {
                 const updated = [...prev];
                 const existingIndex = updated.findIndex(r => r.name === data.userName);
@@ -463,281 +465,281 @@ const Dashboard = () => {
                         </div>
                         <div style={{ marginTop: '16px', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '8px' }}>
                             <span className="live-dot-green"></span>
-    <span style={{ fontSize: '13px', color: '#27ae60', fontWeight: 600 }}>Socket connected → 192.168.0.107:8080</span>
-            </div >
-          </div >
-        ) : (
-    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '12px', padding: '4px 0' }}>
-        {livePunches.map((punch, idx) => (
-            <div key={punch.id || idx} className="punch-row" style={{
-                flex: '1 1 220px', maxWidth: '260px',
-                background: idx === 0
-                    ? 'linear-gradient(135deg, #667eea15, #764ba215)'
-                    : '#f8f9fa',
-                border: idx === 0 ? '2px solid #667eea60' : '1px solid #eee',
-                borderRadius: '12px', padding: '14px', position: 'relative'
-            }}>
-                {idx === 0 && (
-                    <div style={{
-                        position: 'absolute', top: '8px', right: '8px',
-                        background: '#667eea', color: 'white',
-                        fontSize: '9px', fontWeight: 800, padding: '2px 7px',
-                        borderRadius: '20px', letterSpacing: '1px'
-                    }}>NEW</div>
+                            <span style={{ fontSize: '13px', color: '#27ae60', fontWeight: 600 }}>Socket connected → 192.168.0.107:8080</span>
+                        </div >
+                    </div >
+                ) : (
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '12px', padding: '4px 0' }}>
+                        {livePunches.map((punch, idx) => (
+                            <div key={punch.id || idx} className="punch-row" style={{
+                                flex: '1 1 220px', maxWidth: '260px',
+                                background: idx === 0
+                                    ? 'linear-gradient(135deg, #667eea15, #764ba215)'
+                                    : '#f8f9fa',
+                                border: idx === 0 ? '2px solid #667eea60' : '1px solid #eee',
+                                borderRadius: '12px', padding: '14px', position: 'relative'
+                            }}>
+                                {idx === 0 && (
+                                    <div style={{
+                                        position: 'absolute', top: '8px', right: '8px',
+                                        background: '#667eea', color: 'white',
+                                        fontSize: '9px', fontWeight: 800, padding: '2px 7px',
+                                        borderRadius: '20px', letterSpacing: '1px'
+                                    }}>NEW</div>
+                                )}
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                    <div style={{
+                                        width: '40px', height: '40px', borderRadius: '50%', flexShrink: 0,
+                                        background: idx === 0 ? 'linear-gradient(135deg, #667eea, #764ba2)' : '#bdc3c7',
+                                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                        color: 'white', fontWeight: 800, fontSize: '14px', overflow: 'hidden'
+                                    }}>
+                                        {resolvedPhoto(punch) ? (
+                                            <img src={resolvedPhoto(punch)} alt="Face" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                                        ) : (
+                                            isFaceScan(punch) ? '👤' : '👆'
+                                        )}
+                                    </div>
+                                    <div>
+                                        <div style={{ fontWeight: 700, fontSize: '14px', marginBottom: '2px' }}>{resolvedName(punch)}</div>
+                                        <div style={{ fontSize: '11px', color: '#666' }}>ID: {punch.userId}</div>
+                                        <div style={{ fontSize: '11px', color: '#888', marginTop: '2px' }}>🕐 {punch.time || punch.timestamp}</div>
+                                    </div>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
                 )}
-                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                    <div style={{
-                        width: '40px', height: '40px', borderRadius: '50%', flexShrink: 0,
-                        background: idx === 0 ? 'linear-gradient(135deg, #667eea, #764ba2)' : '#bdc3c7',
-                        display: 'flex', alignItems: 'center', justifyContent: 'center',
-                        color: 'white', fontWeight: 800, fontSize: '14px', overflow: 'hidden'
-                    }}>
-                        {resolvedPhoto(punch) ? (
-                            <img src={resolvedPhoto(punch)} alt="Face" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+            </div >
+
+            <div className="main-grid">
+                <div className="dashboard-card">
+                    <div className="card-header">
+                        <h2>📋 Live Attendance - Today</h2>
+                        <div className="actions">
+                            <button className="btn btn-primary" onClick={() => window.location.reload()}>🔄 Refresh</button>
+                            <button className="btn btn-success">📥 Export</button>
+                        </div>
+                    </div>
+
+                    <div className="tabs">
+                        <span className="tab active">All</span>
+                        <span className="tab">Students</span>
+                        <span className="tab">Teachers</span>
+                        <span className="tab">Staff</span>
+                        <span className="tab">Late</span>
+                    </div>
+
+                    <table className="dashboard-table">
+                        <thead>
+                            <tr>
+                                <th>User</th>
+                                <th>Role</th>
+                                <th>In Time</th>
+                                <th>Out Time</th>
+                                <th>Status</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="attendanceTable">
+                            {recent.length === 0 ? (
+                                <tr><td colSpan="6" style={{ textAlign: 'center', padding: '40px', color: '#888' }}>No attendance records yet today. Waiting for machine sync...</td></tr>
+                            ) : recent.map((r, i) => (
+                                <tr key={i}>
+                                    <td>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                            {r.photo ? (
+                                                <img src={r.photo.startsWith('http') ? r.photo : `http://${backendHost}:8080${r.photo}`} alt="Face" style={{ width: '32px', height: '32px', borderRadius: '50%', objectFit: 'cover' }} />
+                                            ) : (
+                                                <div className="avatar" style={{ background: '#bdc3c7' }}>{r.name.charAt(0)}</div>
+                                            )}
+                                            {r.name}
+                                        </div>
+                                    </td>
+                                    <td style={{ textTransform: 'capitalize' }}>{r.role}</td>
+                                    <td>{r.inTime}</td>
+                                    <td>{r.outTime}</td>
+                                    <td><span className="status present">{r.status}</span></td>
+                                    <td>
+                                        <button onClick={() => setEditAttendance({ userId: r.userId || r.id, inTime: r.inTime, outTime: r.outTime, name: r.name })} style={{ background: 'transparent', border: 'none', cursor: 'pointer', fontSize: '16px' }}>✎</button>
+                                    </td>
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
+
+                    <div style={{ marginTop: '15px', display: 'flex', justifyContent: 'space-between', fontSize: '13px', color: '#666', alignItems: 'center' }}>
+                        <span>Showing {recent.length} entries</span>
+                        <div style={{ display: 'flex', gap: '5px' }}>
+                            <button className="btn" style={{ background: '#eee' }}>Previous</button>
+                            <button className="btn btn-primary">1</button>
+                            <button className="btn" style={{ background: '#eee' }}>2</button>
+                            <button className="btn" style={{ background: '#eee' }}>3</button>
+                            <button className="btn" style={{ background: '#eee' }}>Next</button>
+                        </div>
+                    </div>
+                </div>
+
+                <div className="widget-sidebar">
+                    <div className="dashboard-card">
+                        <div className="card-header">
+                            <h2>📝 Admission Forms</h2>
+                            <button className="btn btn-primary" style={{ fontSize: '12px', padding: '4px 12px' }}>+ New</button>
+                        </div>
+                        <div style={{ maxHeight: '200px', overflowY: 'auto' }}>
+                            <div className="admission-item">
+                                <div><div className="name">Ayesha Fatima</div><div className="class">Class 10-A • Parent: Mr. Khan</div></div>
+                                <span className="status pending">Pending</span>
+                            </div>
+                            <div className="admission-item">
+                                <div><div className="name">Rohan Mehta</div><div className="class">Class 8-B • Parent: Mrs. Mehta</div></div>
+                                <span className="status pending">Pending</span>
+                            </div>
+                            <div className="admission-item">
+                                <div><div className="name">Priya Singh</div><div className="class">Class 9-C • Parent: Mr. Singh</div></div>
+                                <span className="status approved">Approved</span>
+                            </div>
+                            <div className="admission-item">
+                                <div><div className="name">Ali Hassan</div><div className="class">Class 7-A • Parent: Mrs. Hassan</div></div>
+                                <span className="status pending">Pending</span>
+                            </div>
+                        </div>
+                        <div style={{ marginTop: '10px', fontSize: '13px', color: '#666' }}>
+                            <span>📊 18 pending • 45 approved this month</span>
+                        </div>
+                    </div>
+
+                    <div className="dashboard-card">
+                        <h2 style={{ fontSize: '18px', marginBottom: '14px' }}>🔒 Biometric Devices</h2>
+                        <div className="biometric-status">
+                            <span className="dot online"></span>
+                            <div>
+                                <strong>Bio System (x 2006)</strong>
+                                <div style={{ fontSize: '12px', color: '#666' }}>SN: NYU7260401606</div>
+                                <div style={{ fontSize: '11px', color: '#27ae60' }}>Last sync: just now</div>
+                            </div>
+                            <span style={{ marginLeft: 'auto', color: '#27ae60', fontWeight: 600 }}>✓ Online</span>
+                        </div>
+                    </div>
+
+
+                    <div className="dashboard-card" style={{ marginTop: '20px', background: 'linear-gradient(135deg, #fff, #fff9fb)', border: '1px solid #ffe3ec' }}>
+                        <h2 style={{ fontSize: '18px', marginBottom: '14px', display: 'flex', alignItems: 'center', gap: '8px' }}>🎉 Upcoming Birthdays</h2>
+
+                        {upcomingBirthdays.length === 0 ? (
+                            <div style={{ padding: '20px', textAlign: 'center', color: '#888', fontSize: '13px' }}>
+                                No birthdays found for any registered students.
+                            </div>
                         ) : (
-                            isFaceScan(punch) ? '👤' : '👆'
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                                {upcomingBirthdays.map(u => (
+                                    <div key={u.id} style={{ display: 'flex', alignItems: 'center', gap: '12px', background: 'white', padding: '10px', borderRadius: '8px', boxShadow: '0 2px 5px rgba(255,192,203,0.2)', border: '1px solid #ffe3ec' }}>
+                                        <div style={{ width: '40px', height: '40px', borderRadius: '50%', background: 'linear-gradient(135deg, #ff9a9e 0%, #fecfef 99%, #fecfef 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontWeight: 'bold', fontSize: '16px' }}>
+                                            {getInitials(u.name)}
+                                        </div>
+                                        <div style={{ flex: 1 }}>
+                                            <div style={{ fontWeight: 600, fontSize: '14px', color: '#333' }}>{u.name}</div>
+                                            <div style={{ fontSize: '11px', color: '#e84393' }}>
+                                                {u.diffDays === 0 ? '🎂 TODAY! Turning ' + u.age : `In ${u.diffDays} days (${new Date(u.dob).toLocaleDateString('en-GB', { month: 'short', day: 'numeric' })})`} • <span style={{ textTransform: 'capitalize' }}>{u.role}</span>
+                                            </div>
+                                        </div>
+                                        <a href={`https://wa.me/91${u.studentPhone || u.parentPhone || ''}`} target="_blank" rel="noreferrer" style={{ background: '#e84393', border: 'none', color: 'white', padding: '6px 10px', borderRadius: '6px', fontSize: '11px', cursor: 'pointer', fontWeight: 'bold', textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                                            ✉️ {u.studentPhone || u.parentPhone ? (u.studentPhone || u.parentPhone) : 'Wish'}
+                                        </a>
+                                    </div>
+                                ))}
+                            </div>
                         )}
                     </div>
-                    <div>
-                        <div style={{ fontWeight: 700, fontSize: '14px', marginBottom: '2px' }}>{resolvedName(punch)}</div>
-                        <div style={{ fontSize: '11px', color: '#666' }}>ID: {punch.userId}</div>
-                        <div style={{ fontSize: '11px', color: '#888', marginTop: '2px' }}>🕐 {punch.time || punch.timestamp}</div>
-                    </div>
-                </div>
-            </div>
-        ))}
-    </div>
-)}
-      </div >
 
-      <div className="main-grid">
-        <div className="dashboard-card">
-            <div className="card-header">
-                <h2>📋 Live Attendance - Today</h2>
-                <div className="actions">
-                    <button className="btn btn-primary" onClick={() => window.location.reload()}>🔄 Refresh</button>
-                    <button className="btn btn-success">📥 Export</button>
-                </div>
-            </div>
-            
-            <div className="tabs">
-                <span className="tab active">All</span>
-                <span className="tab">Students</span>
-                <span className="tab">Teachers</span>
-                <span className="tab">Staff</span>
-                <span className="tab">Late</span>
-            </div>
-            
-            <table className="dashboard-table">
-                <thead>
-                    <tr>
-                        <th>User</th>
-                        <th>Role</th>
-                        <th>In Time</th>
-                        <th>Out Time</th>
-                        <th>Status</th>
-                        <th>Actions</th>
-                    </tr>
-                </thead>
-                <tbody id="attendanceTable">
-                    {recent.length === 0 ? (
-                      <tr><td colSpan="6" style={{ textAlign: 'center', padding: '40px', color: '#888' }}>No attendance records yet today. Waiting for machine sync...</td></tr>
-                    ) : recent.map((r, i) => (
-                      <tr key={i}>
-                          <td>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                              {r.photo ? (
-                                <img src={r.photo.startsWith('http') ? r.photo : `http://${backendHost}:8080${r.photo}`} alt="Face" style={{ width: '32px', height: '32px', borderRadius: '50%', objectFit: 'cover' }} />
-                              ) : (
-                                <div className="avatar" style={{ background: '#bdc3c7' }}>{r.name.charAt(0)}</div>
-                              )}
-                              {r.name}
-                            </div>
-                          </td>
-                          <td style={{ textTransform: 'capitalize' }}>{r.role}</td>
-                          <td>{r.inTime}</td>
-                          <td>{r.outTime}</td>
-                          <td><span className="status present">{r.status}</span></td>
-                          <td>
-                              <button onClick={() => setEditAttendance({ userId: r.userId || r.id, inTime: r.inTime, outTime: r.outTime, name: r.name })} style={{ background: 'transparent', border: 'none', cursor: 'pointer', fontSize: '16px' }}>✎</button>
-                          </td>
-                      </tr>
-                    ))}
-                </tbody>
-            </table>
-            
-            <div style={{ marginTop: '15px', display: 'flex', justifyContent: 'space-between', fontSize: '13px', color: '#666', alignItems: 'center' }}>
-                <span>Showing {recent.length} entries</span>
-                <div style={{ display: 'flex', gap: '5px' }}>
-                    <button className="btn" style={{ background: '#eee' }}>Previous</button>
-                    <button className="btn btn-primary">1</button>
-                    <button className="btn" style={{ background: '#eee' }}>2</button>
-                    <button className="btn" style={{ background: '#eee' }}>3</button>
-                    <button className="btn" style={{ background: '#eee' }}>Next</button>
-                </div>
-            </div>
-        </div>
-
-        <div className="widget-sidebar">
-            <div className="dashboard-card">
-                <div className="card-header">
-                    <h2>📝 Admission Forms</h2>
-                    <button className="btn btn-primary" style={{ fontSize: '12px', padding: '4px 12px' }}>+ New</button>
-                </div>
-                <div style={{ maxHeight: '200px', overflowY: 'auto' }}>
-                    <div className="admission-item">
-                        <div><div className="name">Ayesha Fatima</div><div className="class">Class 10-A • Parent: Mr. Khan</div></div>
-                        <span className="status pending">Pending</span>
-                    </div>
-                    <div className="admission-item">
-                        <div><div className="name">Rohan Mehta</div><div className="class">Class 8-B • Parent: Mrs. Mehta</div></div>
-                        <span className="status pending">Pending</span>
-                    </div>
-                    <div className="admission-item">
-                        <div><div className="name">Priya Singh</div><div className="class">Class 9-C • Parent: Mr. Singh</div></div>
-                        <span className="status approved">Approved</span>
-                    </div>
-                    <div className="admission-item">
-                        <div><div className="name">Ali Hassan</div><div className="class">Class 7-A • Parent: Mrs. Hassan</div></div>
-                        <span className="status pending">Pending</span>
-                    </div>
-                </div>
-                <div style={{ marginTop: '10px', fontSize: '13px', color: '#666' }}>
-                    <span>📊 18 pending • 45 approved this month</span>
-                </div>
-            </div>
-
-            <div className="dashboard-card">
-                <h2 style={{ fontSize: '18px', marginBottom: '14px' }}>🔒 Biometric Devices</h2>
-                <div className="biometric-status">
-                    <span className="dot online"></span>
-                    <div>
-                        <strong>Bio System (x 2006)</strong>
-                        <div style={{ fontSize: '12px', color: '#666' }}>SN: NYU7260401606</div>
-                        <div style={{ fontSize: '11px', color: '#27ae60' }}>Last sync: just now</div>
-                    </div>
-                    <span style={{ marginLeft: 'auto', color: '#27ae60', fontWeight: 600 }}>✓ Online</span>
-                </div>
-            </div>
-
-            
-            <div className="dashboard-card" style={{ marginTop: '20px', background: 'linear-gradient(135deg, #fff, #fff9fb)', border: '1px solid #ffe3ec' }}>
-                <h2 style={{ fontSize: '18px', marginBottom: '14px', display: 'flex', alignItems: 'center', gap: '8px' }}>🎉 Upcoming Birthdays</h2>
-                
-                {upcomingBirthdays.length === 0 ? (
-                  <div style={{ padding: '20px', textAlign: 'center', color: '#888', fontSize: '13px' }}>
-                    No birthdays found for any registered students.
-                  </div>
-                ) : (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                    {upcomingBirthdays.map(u => (
-                      <div key={u.id} style={{ display: 'flex', alignItems: 'center', gap: '12px', background: 'white', padding: '10px', borderRadius: '8px', boxShadow: '0 2px 5px rgba(255,192,203,0.2)', border: '1px solid #ffe3ec' }}>
-                        <div style={{ width: '40px', height: '40px', borderRadius: '50%', background: 'linear-gradient(135deg, #ff9a9e 0%, #fecfef 99%, #fecfef 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontWeight: 'bold', fontSize: '16px' }}>
-                          {getInitials(u.name)}
+                    <div className="dashboard-card" style={{ marginTop: '20px' }}>
+                        <h2 style={{ fontSize: '18px', marginBottom: '10px' }}>📨 SMS Notifications</h2>
+                        <div className="sms-log">
+                            <div className="time">10:25 AM • Sent</div>
+                            <div className="message">✅ Ayesha Fatima marked present at 8:30 AM</div>
+                            <div style={{ fontSize: '11px', color: '#27ae60' }}>Sent to: +91 98765 43210</div>
                         </div>
-                        <div style={{ flex: 1 }}>
-                          <div style={{ fontWeight: 600, fontSize: '14px', color: '#333' }}>{u.name}</div>
-                          <div style={{ fontSize: '11px', color: '#e84393' }}>
-                            {u.diffDays === 0 ? '🎂 TODAY! Turning ' + u.age : `In ${u.diffDays} days (${new Date(u.dob).toLocaleDateString('en-GB', { month: 'short', day: 'numeric' })})`} • <span style={{textTransform:'capitalize'}}>{u.role}</span>
-                          </div>
+                        <div className="sms-log">
+                            <div className="time">09:45 AM • Sent</div>
+                            <div className="message">⚠️ Rahul Sharma arrived late (9:20 AM)</div>
+                            <div style={{ fontSize: '11px', color: '#e67e22' }}>Sent to: +91 87654 32109</div>
                         </div>
-                        <a href={`https://wa.me/91${u.studentPhone || u.parentPhone || ''}`} target="_blank" rel="noreferrer" style={{ background: '#e84393', border: 'none', color: 'white', padding: '6px 10px', borderRadius: '6px', fontSize: '11px', cursor: 'pointer', fontWeight: 'bold', textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
-                          ✉️ {u.studentPhone || u.parentPhone ? (u.studentPhone || u.parentPhone) : 'Wish'}
-                        </a>
-                      </div>
-                    ))}
-                  </div>
-                )}
+                        <div style={{ marginTop: '10px' }}>
+                            <button className="btn btn-primary" style={{ width: '100%' }}>📱 Send Manual SMS</button>
+                        </div>
+                    </div>
+                </div>
             </div>
 
             <div className="dashboard-card" style={{ marginTop: '20px' }}>
-                <h2 style={{ fontSize: '18px', marginBottom: '10px' }}>📨 SMS Notifications</h2>
-                <div className="sms-log">
-                    <div className="time">10:25 AM • Sent</div>
-                    <div className="message">✅ Ayesha Fatima marked present at 8:30 AM</div>
-                    <div style={{ fontSize: '11px', color: '#27ae60' }}>Sent to: +91 98765 43210</div>
+                <div className="card-header">
+                    <h2>📅 Today's Teacher Schedule</h2>
+                    <div className="actions">
+                        <button className="btn btn-warning">Edit Schedule</button>
+                        <button className="btn btn-primary">View Full</button>
+                    </div>
                 </div>
-                <div className="sms-log">
-                    <div className="time">09:45 AM • Sent</div>
-                    <div className="message">⚠️ Rahul Sharma arrived late (9:20 AM)</div>
-                    <div style={{ fontSize: '11px', color: '#e67e22' }}>Sent to: +91 87654 32109</div>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '15px' }}>
+                    <div style={{ background: '#f8f9fa', padding: '12px', borderRadius: '8px', borderLeft: '4px solid #667eea' }}>
+                        <strong>Ahmed Khan</strong>
+                        <div style={{ fontSize: '13px', color: '#666' }}>Math • Class 10-A</div>
+                        <div style={{ fontSize: '12px', color: '#27ae60' }}>🕐 9:00 AM - 10:30 AM</div>
+                    </div>
+                    <div style={{ background: '#f8f9fa', padding: '12px', borderRadius: '8px', borderLeft: '4px solid #e74c3c' }}>
+                        <strong>Mrs. Patel</strong>
+                        <div style={{ fontSize: '13px', color: '#666' }}>Science • Class 9-B</div>
+                        <div style={{ fontSize: '12px', color: '#e74c3c' }}>⚠️ Absent - Substitute needed</div>
+                    </div>
+                    <div style={{ background: '#f8f9fa', padding: '12px', borderRadius: '8px', borderLeft: '4px solid #27ae60' }}>
+                        <strong>Dr. Khan</strong>
+                        <div style={{ fontSize: '13px', color: '#666' }}>Physics • Class 11-A</div>
+                        <div style={{ fontSize: '12px', color: '#27ae60' }}>🕐 10:30 AM - 12:00 PM</div>
+                    </div>
+                    <div style={{ background: '#f8f9fa', padding: '12px', borderRadius: '8px', borderLeft: '4px solid #f39c12' }}>
+                        <strong>Ms. Sharma</strong>
+                        <div style={{ fontSize: '13px', color: '#666' }}>English • Class 8-A</div>
+                        <div style={{ fontSize: '12px', color: '#f39c12' }}>🕐 1:00 PM - 2:30 PM</div>
+                    </div>
                 </div>
-                <div style={{ marginTop: '10px' }}>
-                    <button className="btn btn-primary" style={{ width: '100%' }}>📱 Send Manual SMS</button>
-                </div>
-            </div>
-        </div>
-      </div>
-
-      <div className="dashboard-card" style={{ marginTop: '20px' }}>
-        <div className="card-header">
-            <h2>📅 Today's Teacher Schedule</h2>
-            <div className="actions">
-                <button className="btn btn-warning">Edit Schedule</button>
-                <button className="btn btn-primary">View Full</button>
-            </div>
-        </div>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '15px' }}>
-            <div style={{ background: '#f8f9fa', padding: '12px', borderRadius: '8px', borderLeft: '4px solid #667eea' }}>
-                <strong>Ahmed Khan</strong>
-                <div style={{ fontSize: '13px', color: '#666' }}>Math • Class 10-A</div>
-                <div style={{ fontSize: '12px', color: '#27ae60' }}>🕐 9:00 AM - 10:30 AM</div>
-            </div>
-            <div style={{ background: '#f8f9fa', padding: '12px', borderRadius: '8px', borderLeft: '4px solid #e74c3c' }}>
-                <strong>Mrs. Patel</strong>
-                <div style={{ fontSize: '13px', color: '#666' }}>Science • Class 9-B</div>
-                <div style={{ fontSize: '12px', color: '#e74c3c' }}>⚠️ Absent - Substitute needed</div>
-            </div>
-            <div style={{ background: '#f8f9fa', padding: '12px', borderRadius: '8px', borderLeft: '4px solid #27ae60' }}>
-                <strong>Dr. Khan</strong>
-                <div style={{ fontSize: '13px', color: '#666' }}>Physics • Class 11-A</div>
-                <div style={{ fontSize: '12px', color: '#27ae60' }}>🕐 10:30 AM - 12:00 PM</div>
-            </div>
-            <div style={{ background: '#f8f9fa', padding: '12px', borderRadius: '8px', borderLeft: '4px solid #f39c12' }}>
-                <strong>Ms. Sharma</strong>
-                <div style={{ fontSize: '13px', color: '#666' }}>English • Class 8-A</div>
-                <div style={{ fontSize: '12px', color: '#f39c12' }}>🕐 1:00 PM - 2:30 PM</div>
-            </div>
-        </div>
-      </div>
-
-      {/* Edit Attendance Modal */}
-      {editAttendance && (
-        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 1000 }}>
-          <div style={{ background: 'white', padding: '30px', borderRadius: '12px', width: '400px' }}>
-            <h3 style={{ marginTop: 0 }}>Edit Attendance for {editAttendance.name}</h3>
-            
-            <div style={{ marginBottom: '15px' }}>
-              <label style={{ display: 'block', marginBottom: '5px' }}>In Time</label>
-              <input 
-                type="text" 
-                value={editAttendance.inTime} 
-                onChange={(e) => setEditAttendance({ ...editAttendance, inTime: e.target.value })}
-                placeholder="e.g. 09:30 AM"
-                style={{ width: '100%', padding: '8px', borderRadius: '4px', border: '1px solid #ccc' }}
-              />
-            </div>
-            
-            <div style={{ marginBottom: '20px' }}>
-              <label style={{ display: 'block', marginBottom: '5px' }}>Out Time</label>
-              <input 
-                type="text" 
-                value={editAttendance.outTime} 
-                onChange={(e) => setEditAttendance({ ...editAttendance, outTime: e.target.value })}
-                placeholder="e.g. 05:30 PM"
-                style={{ width: '100%', padding: '8px', borderRadius: '4px', border: '1px solid #ccc' }}
-              />
             </div>
 
-            <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
-              <button onClick={() => setEditAttendance(null)} className="btn" style={{ background: '#eee', color: '#333' }}>Cancel</button>
-              <button onClick={handleSaveAttendance} className="btn btn-primary">Save Changes</button>
-            </div>
-          </div>
-        </div>
-      )}
-    </div >
-  );
+            {/* Edit Attendance Modal */}
+            {editAttendance && (
+                <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 1000 }}>
+                    <div style={{ background: 'white', padding: '30px', borderRadius: '12px', width: '400px' }}>
+                        <h3 style={{ marginTop: 0 }}>Edit Attendance for {editAttendance.name}</h3>
+
+                        <div style={{ marginBottom: '15px' }}>
+                            <label style={{ display: 'block', marginBottom: '5px' }}>In Time</label>
+                            <input
+                                type="text"
+                                value={editAttendance.inTime}
+                                onChange={(e) => setEditAttendance({ ...editAttendance, inTime: e.target.value })}
+                                placeholder="e.g. 09:30 AM"
+                                style={{ width: '100%', padding: '8px', borderRadius: '4px', border: '1px solid #ccc' }}
+                            />
+                        </div>
+
+                        <div style={{ marginBottom: '20px' }}>
+                            <label style={{ display: 'block', marginBottom: '5px' }}>Out Time</label>
+                            <input
+                                type="text"
+                                value={editAttendance.outTime}
+                                onChange={(e) => setEditAttendance({ ...editAttendance, outTime: e.target.value })}
+                                placeholder="e.g. 05:30 PM"
+                                style={{ width: '100%', padding: '8px', borderRadius: '4px', border: '1px solid #ccc' }}
+                            />
+                        </div>
+
+                        <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
+                            <button onClick={() => setEditAttendance(null)} className="btn" style={{ background: '#eee', color: '#333' }}>Cancel</button>
+                            <button onClick={handleSaveAttendance} className="btn btn-primary">Save Changes</button>
+                        </div>
+                    </div>
+                </div>
+            )}
+        </div >
+    );
 };
 
 const AttendancePage = () => {
@@ -898,8 +900,8 @@ const AdmissionsPage = () => {
                 }
             } catch (err) {
                 console.error("Error deleting student:", err);
-                const errorMsg = err.response && err.response.data && err.response.data.error 
-                    ? err.response.data.error 
+                const errorMsg = err.response && err.response.data && err.response.data.error
+                    ? err.response.data.error
                     : err.message;
                 alert(`Failed to delete student: ${errorMsg}`);
             }
@@ -1026,7 +1028,7 @@ const AdmissionsPage = () => {
                                                     <td><span className="status error">{log.lastOut}</span></td>
                                                     <td><strong>{log.durationMinutes} mins</strong> ({(log.durationMinutes / 60).toFixed(1)} hrs)</td>
                                                     <td>
-                                                      <button onClick={() => setEditAttendance({ userId: selectedStudent.fingerprint_id, date: log.date, inTime: log.firstIn, outTime: log.lastOut === 'N/A' ? '' : log.lastOut, name: selectedStudent.name })} style={{ background: 'transparent', border: 'none', cursor: 'pointer', fontSize: '16px' }}>✎</button>
+                                                        <button onClick={() => setEditAttendance({ userId: selectedStudent.fingerprint_id, date: log.date, inTime: log.firstIn, outTime: log.lastOut === 'N/A' ? '' : log.lastOut, name: selectedStudent.name })} style={{ background: 'transparent', border: 'none', cursor: 'pointer', fontSize: '16px' }}>✎</button>
                                                     </td>
                                                 </tr>
                                             ))}
@@ -1046,36 +1048,36 @@ const AdmissionsPage = () => {
             {/* Edit Attendance Modal */}
             {editAttendance && (
                 <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 1050 }}>
-                <div style={{ background: 'white', padding: '30px', borderRadius: '12px', width: '400px', boxShadow: '0 4px 20px rgba(0,0,0,0.2)' }}>
-                    <h3 style={{ marginTop: 0 }}>Edit Attendance for {editAttendance.name}</h3>
-                    
-                    <div style={{ marginBottom: '15px' }}>
-                    <label style={{ display: 'block', marginBottom: '5px' }}>In Time</label>
-                    <input 
-                        type="text" 
-                        value={editAttendance.inTime} 
-                        onChange={(e) => setEditAttendance({ ...editAttendance, inTime: e.target.value })}
-                        placeholder="e.g. 09:30 AM"
-                        style={{ width: '100%', padding: '8px', borderRadius: '4px', border: '1px solid #ccc' }}
-                    />
-                    </div>
-                    
-                    <div style={{ marginBottom: '20px' }}>
-                    <label style={{ display: 'block', marginBottom: '5px' }}>Out Time</label>
-                    <input 
-                        type="text" 
-                        value={editAttendance.outTime} 
-                        onChange={(e) => setEditAttendance({ ...editAttendance, outTime: e.target.value })}
-                        placeholder="e.g. 05:30 PM"
-                        style={{ width: '100%', padding: '8px', borderRadius: '4px', border: '1px solid #ccc' }}
-                    />
-                    </div>
+                    <div style={{ background: 'white', padding: '30px', borderRadius: '12px', width: '400px', boxShadow: '0 4px 20px rgba(0,0,0,0.2)' }}>
+                        <h3 style={{ marginTop: 0 }}>Edit Attendance for {editAttendance.name}</h3>
 
-                    <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
-                    <button onClick={() => setEditAttendance(null)} className="btn" style={{ background: '#eee', color: '#333' }}>Cancel</button>
-                    <button onClick={handleSaveAttendance} className="btn btn-primary">Save Changes</button>
+                        <div style={{ marginBottom: '15px' }}>
+                            <label style={{ display: 'block', marginBottom: '5px' }}>In Time</label>
+                            <input
+                                type="text"
+                                value={editAttendance.inTime}
+                                onChange={(e) => setEditAttendance({ ...editAttendance, inTime: e.target.value })}
+                                placeholder="e.g. 09:30 AM"
+                                style={{ width: '100%', padding: '8px', borderRadius: '4px', border: '1px solid #ccc' }}
+                            />
+                        </div>
+
+                        <div style={{ marginBottom: '20px' }}>
+                            <label style={{ display: 'block', marginBottom: '5px' }}>Out Time</label>
+                            <input
+                                type="text"
+                                value={editAttendance.outTime}
+                                onChange={(e) => setEditAttendance({ ...editAttendance, outTime: e.target.value })}
+                                placeholder="e.g. 05:30 PM"
+                                style={{ width: '100%', padding: '8px', borderRadius: '4px', border: '1px solid #ccc' }}
+                            />
+                        </div>
+
+                        <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
+                            <button onClick={() => setEditAttendance(null)} className="btn" style={{ background: '#eee', color: '#333' }}>Cancel</button>
+                            <button onClick={handleSaveAttendance} className="btn btn-primary">Save Changes</button>
+                        </div>
                     </div>
-                </div>
                 </div>
             )}
 
@@ -1339,17 +1341,17 @@ const TeachersPage = () => {
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', position: 'sticky', top: '-30px', background: '#fff', padding: '20px 0', zIndex: 10, borderBottom: '1px solid #eaeaea' }}>
                             <h3 style={{ margin: 0, color: '#2c3e50' }}>📊 Comprehensive Staff Attendance Summary</h3>
                             <div style={{ display: 'flex', gap: '15px', alignItems: 'center' }}>
-                                <input 
-                                    type="text" 
-                                    placeholder="🔍 Search by name or role..." 
-                                    value={summarySearchTerm} 
+                                <input
+                                    type="text"
+                                    placeholder="🔍 Search by name or role..."
+                                    value={summarySearchTerm}
                                     onChange={(e) => setSummarySearchTerm(e.target.value)}
                                     style={{ padding: '8px 15px', borderRadius: '20px', border: '1px solid #d1d8e0', outline: 'none', width: '250px', fontSize: '13px', boxShadow: 'inset 0 1px 3px rgba(0,0,0,0.05)', transition: 'border-color 0.2s' }}
                                 />
                                 <button className="btn" style={{ padding: '6px 16px', background: '#e74c3c', color: 'white', border: 'none', borderRadius: '6px' }} onClick={() => setShowGlobalSummary(false)}>Close</button>
                             </div>
                         </div>
-                        
+
                         {teachers.filter(t => t.name.toLowerCase().includes(summarySearchTerm.toLowerCase()) || t.role.toLowerCase().includes(summarySearchTerm.toLowerCase())).length === 0 ? (
                             <div style={{ textAlign: 'center', padding: '40px', color: '#888' }}>No data available.</div>
                         ) : (
@@ -1364,7 +1366,7 @@ const TeachersPage = () => {
                                             {teacher.daysPresent || 0} Days Present
                                         </div>
                                     </div>
-                                    
+
                                     <div style={{ maxHeight: '200px', overflowY: 'auto', border: '1px solid #eee', borderRadius: '6px' }}>
                                         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px', textAlign: 'left' }}>
                                             <thead style={{ position: 'sticky', top: 0, background: '#f4f6f7', zIndex: 1 }}>
@@ -1430,7 +1432,7 @@ const TeachersPage = () => {
                                 <div style={{ fontSize: '12px', color: '#888' }}>Today's In Time</div>
                                 <strong style={{ fontSize: '16px' }}>{selectedTeacher.inTime}</strong>
                             </div>
-                            
+
                             <div style={{ borderLeft: '1px solid #ddd', paddingLeft: '20px' }}>
                                 <div style={{ fontSize: '12px', color: '#888' }}>Daily Base Pay</div>
                                 <strong style={{ fontSize: '16px' }}>₹ {selectedTeacher.salary ? Math.round(selectedTeacher.salary / 30) : 0}</strong>
@@ -1457,7 +1459,7 @@ const TeachersPage = () => {
                                     {selectedTeacher.daysPresent || 0} Present
                                 </span>
                             </div>
-                            
+
                             {selectedTeacher.absentDates && selectedTeacher.absentDates.length > 0 ? (
                                 <div>
                                     <div style={{ fontSize: '11px', color: '#666', marginBottom: '8px', fontWeight: '500' }}>
@@ -2483,413 +2485,743 @@ const BirthdaysPage = () => {
 
 // --- MAIN APP ---
 
-const StudentProfilePage = () => {
-  const { id } = useParams();
-  const [data, setData] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [isEditing, setIsEditing] = useState(false);
-  const [editForm, setEditForm] = useState({});
-  const [activeTab, setActiveTab] = useState('punches');
-  const [paymentAmount, setPaymentAmount] = useState('');
+const TeacherProfilePage = () => {
+    const { id } = useParams();
+    const [data, setData] = useState(null);
+    const [loading, setLoading] = useState(true);
+    const [activeTab, setActiveTab] = useState('subjects');
+    const [filterMonth, setFilterMonth] = useState(new Date().getMonth() + 1);
+    const [filterYear, setFilterYear] = useState(new Date().getFullYear());
+    const [exportMenuOpen, setExportMenuOpen] = useState(false);
 
-  const fetchStudentData = () => {
-    api.get(`/attendance/student/${id}`)
-      .then(res => {
-        setData(res.data);
-        setEditForm(res.data.student);
-        setLoading(false);
-      })
-      .catch(err => {
-        console.error(err);
-        setLoading(false);
-      });
-  };
+    const handleExport = (format) => {
+        if (!data || !data.records || data.records.length === 0) return;
 
-  useEffect(() => {
-    fetchStudentData();
+        const exportData = data.records.map(r => ({
+            "Date": r.date,
+            "In / Out": r.firstIn !== '--:--' ? `${r.firstIn} / ${r.lastOut}` : '--:-- / --:--',
+            "Punches": r.totalEntries || 0,
+            "Total Hours": r.durationMinutes ? `${Math.floor(r.durationMinutes / 60)}h ${r.durationMinutes % 60}m` : '0h 0m',
+            "Status": r.status
+        }));
 
-    const handleLivePunch = (punch) => {
-      // Refresh if the punch belongs to this student
-      if (punch.userId === id || punch.fingerprint_id === id) {
-        fetchStudentData();
-      }
+        const tName = (teacher && teacher.name) ? teacher.name : 'User';
+
+        if (format === 'excel') {
+            const worksheet = XLSX.utils.json_to_sheet(exportData);
+            const workbook = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(workbook, worksheet, "Punches");
+            XLSX.writeFile(workbook, `${tName}_Punches_${filterMonth}_${filterYear}.xlsx`);
+        } else if (format === 'csv') {
+            const worksheet = XLSX.utils.json_to_sheet(exportData);
+            const csvOutput = XLSX.utils.sheet_to_csv(worksheet);
+            const blob = new Blob([csvOutput], { type: 'text/csv;charset=utf-8;' });
+            const link = document.createElement("a");
+            const url = URL.createObjectURL(blob);
+            link.setAttribute("href", url);
+            link.setAttribute("download", `${tName}_Punches_${filterMonth}_${filterYear}.csv`);
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        } else if (format === 'pdf') {
+            const doc = new jsPDF();
+            doc.text(`${tName} - Punches (${filterMonth}/${filterYear})`, 14, 15);
+            doc.autoTable({
+                head: [['Date', 'In / Out', 'Punches', 'Total Hours', 'Status']],
+                body: exportData.map(r => [r['Date'], r['In / Out'], r['Punches'], r['Total Hours'], r['Status']]),
+                startY: 20
+            });
+            doc.save(`${tName}_Punches_${filterMonth}_${filterYear}.pdf`);
+        }
+        setExportMenuOpen(false);
     };
 
-    socket.on('live_punch', handleLivePunch);
-    return () => socket.off('live_punch', handleLivePunch);
-  }, [id]);
+    const fetchTeacherData = (month = filterMonth, year = filterYear) => {
+        api.get(`/attendance/student/${id}?month=${month}&year=${year}`) // This endpoint works for any user
+            .then(res => {
+                setData(res.data);
+                setLoading(false);
+            })
+            .catch(err => {
+                console.error(err);
+                setLoading(false);
+            });
+    };
 
-  const handleEditChange = (e) => {
-    const { name, value } = e.target;
-    let newForm = { ...editForm, [name]: value };
-    
-    // Auto-calculate remaining due if fee or amount paid changes
-    if (name === 'fee' || name === 'amountReceived') {
-      const total = Number(newForm.fee) || 0;
-      const paid = Number(newForm.amountReceived) || 0;
-      newForm.dueFees = total - paid;
-    }
-    
-    setEditForm(newForm);
-  };
+    useEffect(() => {
+        fetchTeacherData();
 
-  const handleSave = async () => {
-    try {
-      await api.put(`/users/${id}`, editForm);
-      setData({ ...data, student: editForm });
-      setIsEditing(false);
-    } catch (err) {
-      console.error('Failed to save profile:', err);
-      alert('Failed to save profile: ' + (err.response?.data?.error || err.message));
-    }
-  };
+        const handleLivePunch = (punch) => {
+            if (String(punch.userId) === String(id) || String(punch.fingerprint_id) === String(id)) {
+                fetchTeacherData();
+            }
+        };
 
-  const handleFeePayment = async () => {
-    try {
-      const payment = Number(paymentAmount) || 0;
-      const currentPaid = Number(data.student.amountReceived) || 0;
-      const totalFee = Number(editForm.fee) || 0;
-      
-      const newPaid = currentPaid + payment;
-      const newDue = totalFee - newPaid;
+        socket.on('live_punch', handleLivePunch);
+        return () => socket.off('live_punch', handleLivePunch);
+    }, [id]);
 
-      const payload = { ...editForm, amountReceived: newPaid, dueFees: newDue };
-      
-      await api.put(`/users/${id}`, payload);
-      setData({ ...data, student: payload });
-      setEditForm(payload);
-      setPaymentAmount('');
-      alert('Fee payment recorded successfully!');
-    } catch (err) {
-      console.error(err);
-      alert('Failed to record payment');
-    }
-  };
+    if (loading) return <div style={{ padding: '40px', textAlign: 'center', fontSize: '18px', color: '#666' }}>Loading Profile...</div>;
+    if (!data || !data.student) return <div style={{ padding: '40px', textAlign: 'center', fontSize: '18px', color: '#e74c3c' }}>Profile Not Found.</div>;
 
-  const exportToExcel = () => {
-    if (!data || !data.records) return;
-    
-    // Headers
-    const headers = ["Student Name", "Date", "First In", "Last Out", "Duration"];
-    
-    const rows = data.records.map(r => {
-      const durationStr = r.durationSeconds !== undefined 
-          ? `${Math.floor(r.durationSeconds / 3600)}h ${Math.floor((r.durationSeconds % 3600) / 60)}m ${r.durationSeconds % 60}s` 
-          : `${Math.floor(r.durationMinutes/60)}h ${r.durationMinutes%60}m`;
-          
-      return [
-        `"${data.student.name}"`,
-        `"${r.date.split('-').reverse().join('/')}"`,
-        `"${r.firstIn}"`,
-        `"${r.lastOut}"`,
-        `"${durationStr}"`
-      ].join(',');
-    });
-    
-    const csvContent = [headers.join(','), ...rows].join('\n');
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.setAttribute("href", url);
-    link.setAttribute("download", `${data.student.name}_Attendance.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-  };
+    const teacher = data.student;
 
-  if (loading) return <div style={{ padding: '40px', textAlign: 'center', fontSize: '18px', color: '#666' }}>Loading Student Profile...</div>;
-  if (!data) return <div style={{ padding: '40px', textAlign: 'center', fontSize: '18px', color: '#e74c3c' }}>Student Profile Not Found.</div>;
-
-  const { student, summary, records } = data;
-
-  // Format records for Recharts
-  const chartData = [...records].reverse().map(r => ({
-    date: r.date.split('-').slice(1).reverse().join('/'), // DD/MM
-    duration: r.durationMinutes || 0
-  }));
-
-  return (
-    <div style={{ maxWidth: '1200px', margin: '0 auto', display: 'flex', flexDirection: 'column', gap: '30px' }}>
-      
-      {/* Header Profile Section */}
-      <div style={{ background: 'white', borderRadius: '16px', padding: '30px', boxShadow: '0 4px 20px rgba(0,0,0,0.05)', display: 'flex', gap: '30px', alignItems: 'center', position: 'relative' }}>
-        {student.photo ? (
-          <img 
-            src={`http://${backendHost}:8080${student.photo}`} 
-            alt={student.name} 
-            style={{ width: '100px', height: '100px', borderRadius: '50%', objectFit: 'cover', border: '3px solid #8b5cf6', boxShadow: '0 4px 10px rgba(139,92,246,0.2)' }} 
-          />
-        ) : (
-          <div style={{ width: '100px', height: '100px', borderRadius: '50%', background: 'linear-gradient(135deg, #8b5cf6, #d946ef)', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '40px', fontWeight: 'bold', border: '3px solid white', boxShadow: '0 4px 10px rgba(0,0,0,0.1)' }}>
-            {student.name.charAt(0).toUpperCase()}
-          </div>
-        )}
-        <div style={{ flex: 1 }}>
-          <h1 style={{ margin: '0 0 10px 0', fontSize: '28px', color: '#1f2937' }}>{student.name}</h1>
-          <div style={{ display: 'flex', gap: '20px', color: '#6b7280', fontSize: '15px', flexWrap: 'wrap' }}>
-            <div><strong style={{ color: '#374151' }}>Register No:</strong> {student.fingerprint_id}</div>
-            <div><strong style={{ color: '#374151' }}>Email:</strong> {student.email || 'N/A'}</div>
-            <div><strong style={{ color: '#374151' }}>Student Phone:</strong> {student.studentPhone || 'N/A'}</div>
-            <div><strong style={{ color: '#374151' }}>Mother Phone:</strong> {student.motherPhone || 'N/A'}</div>
-            <div><strong style={{ color: '#374151' }}>Father Phone:</strong> {student.fatherPhone || 'N/A'}</div>
-            <div><strong style={{ color: '#374151' }}>Branch:</strong> {student.branch || 'N/A'}</div>
-          </div>
-        </div>
-        <div style={{ position: 'absolute', top: '30px', right: '30px', display: 'flex', gap: '10px' }}>
-          <button 
-            onClick={() => window.print()}
-            style={{ background: '#3b82f6', border: 'none', padding: '8px 16px', borderRadius: '8px', cursor: 'pointer', fontWeight: 600, color: 'white', transition: 'all 0.2s' }}>
-            🖨️ Print Receipt
-          </button>
-          <button 
-            onClick={() => setIsEditing(true)}
-            style={{ background: '#f3f4f6', border: 'none', padding: '8px 16px', borderRadius: '8px', cursor: 'pointer', fontWeight: 600, color: '#4b5563', transition: 'all 0.2s' }}>
-            ✏️ Edit Profile
-          </button>
-        </div>
-      </div>
-      
-      {/* Hidden receipt for printing */}
-      <ReceiptPrintView student={student} />
-
-      {/* Edit Modal */}
-      {isEditing && (
-        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.6)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 1000 }}>
-          <div style={{ background: 'white', padding: '30px', borderRadius: '16px', width: '600px', boxShadow: '0 10px 25px rgba(0,0,0,0.1)' }}>
-            <h2 style={{ marginTop: 0, marginBottom: '20px', fontSize: '22px', color: '#1f2937' }}>Edit Profile</h2>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px' }}>
-              <div>
-                <label style={{ display: 'block', fontSize: '13px', marginBottom: '5px', color: '#4b5563' }}>Full Name</label>
-                <input name="name" value={editForm.name || ''} onChange={handleEditChange} style={{ width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid #d1d5db', outline: 'none' }} />
-              </div>
-              <div>
-                <label style={{ display: 'block', fontSize: '13px', marginBottom: '5px', color: '#4b5563' }}>Profile Photo</label>
-                <input type="file" accept="image/*" onChange={(e) => {
-                  const file = e.target.files[0];
-                  if (file) {
-                    const reader = new FileReader();
-                    reader.onload = (ev) => setEditForm({ ...editForm, photo: ev.target.result });
-                    reader.readAsDataURL(file);
-                  }
-                }} style={{ width: '100%', padding: '7px', borderRadius: '8px', border: '1px solid #d1d5db', outline: 'none', background: 'white' }} />
-              </div>
-              <div>
-                <label style={{ display: 'block', fontSize: '13px', marginBottom: '5px', color: '#4b5563' }}>Email</label>
-                <input name="email" value={editForm.email || ''} onChange={handleEditChange} style={{ width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid #d1d5db', outline: 'none' }} />
-              </div>
-              <div>
-                <label style={{ display: 'block', fontSize: '13px', marginBottom: '5px', color: '#4b5563' }}>Student Phone</label>
-                <input name="studentPhone" value={editForm.studentPhone || ''} onChange={handleEditChange} style={{ width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid #d1d5db', outline: 'none' }} />
-              </div>
-              <div>
-                <label style={{ display: 'block', fontSize: '13px', marginBottom: '5px', color: '#4b5563' }}>Mother Phone</label>
-                <input name="motherPhone" value={editForm.motherPhone || ''} onChange={handleEditChange} style={{ width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid #d1d5db', outline: 'none' }} />
-              </div>
-              <div>
-                <label style={{ display: 'block', fontSize: '13px', marginBottom: '5px', color: '#4b5563' }}>Father Phone</label>
-                <input name="fatherPhone" value={editForm.fatherPhone || ''} onChange={handleEditChange} style={{ width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid #d1d5db', outline: 'none' }} />
-              </div>
-              <div>
-                <label style={{ display: 'block', fontSize: '13px', marginBottom: '5px', color: '#4b5563' }}>Branch</label>
-                <input name="branch" value={editForm.branch || ''} onChange={handleEditChange} style={{ width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid #d1d5db', outline: 'none' }} />
-              </div>
-            </div>
-            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '25px' }}>
-              <button onClick={() => setIsEditing(false)} style={{ background: 'transparent', border: '1px solid #d1d5db', padding: '10px 20px', borderRadius: '8px', cursor: 'pointer', fontWeight: 600, color: '#4b5563' }}>Cancel</button>
-              <button onClick={handleSave} style={{ background: '#8b5cf6', color: 'white', border: 'none', padding: '10px 20px', borderRadius: '8px', cursor: 'pointer', fontWeight: 600 }}>Save Changes</button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      <div style={{ display: 'flex', gap: '30px', alignItems: 'flex-start' }}>
-        {/* Quick Links Sidebar */}
-        <div style={{ width: '240px', display: 'flex', flexDirection: 'column', gap: '15px', flexShrink: 0 }}>
-          <div style={{ background: '#f3e8ff', color: '#9333ea', padding: '6px 16px', borderRadius: '20px', display: 'inline-block', fontWeight: 'bold', fontSize: '14px', alignSelf: 'flex-start', marginBottom: '5px' }}>Quick Links</div>
-
-          <button onClick={() => setActiveTab('punches')} style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '12px 16px', background: activeTab === 'punches' ? '#f3e8ff' : 'white', border: '1px solid #c084fc', borderRadius: '8px', color: '#a855f7', fontWeight: '600', fontSize: '15px', cursor: 'pointer', transition: 'all 0.2s' }}>
-            <span style={{ fontSize: '18px' }}>👆</span> Punches
-          </button>
-          
-          <button onClick={() => setActiveTab('fees')} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 16px', background: activeTab === 'fees' ? '#fee2e2' : 'white', border: '1px solid #fca5a5', borderRadius: '8px', color: '#ef4444', fontWeight: '600', fontSize: '15px', cursor: 'pointer', transition: 'all 0.2s' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}><span style={{ fontSize: '18px' }}>₹</span> Fees</div>
-            <span style={{ fontSize: '12px' }}>▼</span>
-          </button>
-
-          <button onClick={() => setActiveTab('punches')} style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '12px 16px', background: 'white', border: '1px solid #86efac', borderRadius: '8px', color: '#22c55e', fontWeight: '600', fontSize: '15px', cursor: 'pointer', transition: 'all 0.2s' }}>
-            <span style={{ fontSize: '18px' }}>🕒</span> Attendance
-          </button>
-
-          <button onClick={() => window.print()} style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '12px 16px', background: 'white', border: '1px solid #7dd3fc', borderRadius: '8px', color: '#0ea5e9', fontWeight: '600', fontSize: '15px', cursor: 'pointer', transition: 'all 0.2s' }}>
-            <span style={{ fontSize: '18px' }}>🖨️</span> Admission Form
-          </button>
-
-          <button onClick={() => window.print()} style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '12px 16px', background: 'white', border: '1px solid #fcd34d', borderRadius: '8px', color: '#f59e0b', fontWeight: '600', fontSize: '15px', cursor: 'pointer', transition: 'all 0.2s' }}>
-            <span style={{ fontSize: '18px' }}>🪪</span> Icard
-          </button>
-        </div>
-
-        {/* Main Content Area */}
-        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '30px', minWidth: 0 }}>
-          
-          {activeTab === 'punches' && (
-            <>
-          {/* Stats Summary */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '20px' }}>
-            {[
-              { label: 'Present Days (This Month)', value: summary.daysPresentThisMonth, color: '#22c55e', icon: '📅' },
-              { label: 'Absent Days (This Month)', value: summary.absentDaysThisMonth || 0, color: '#ef4444', icon: '❌' },
-              { label: 'Monthly Attendance %', value: `${summary.monthlyPercentage}%`, color: '#3b82f6', icon: '📊' },
-              { label: 'Total Hours (All Time)', value: summary.totalHours, color: '#8b5cf6', icon: '⏱️' }
-            ].map((stat, i) => (
-              <div key={i} style={{ background: 'white', padding: '25px', borderRadius: '16px', boxShadow: '0 4px 20px rgba(0,0,0,0.05)', display: 'flex', alignItems: 'center', gap: '20px' }}>
-                <div style={{ fontSize: '32px', background: `${stat.color}15`, width: '60px', height: '60px', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: stat.color }}>{stat.icon}</div>
-                <div>
-                  <div style={{ fontSize: '13px', color: '#6b7280', textTransform: 'uppercase', fontWeight: 600, letterSpacing: '0.5px', marginBottom: '4px' }}>{stat.label}</div>
-                  <div style={{ fontSize: '24px', fontWeight: 800, color: '#1f2937' }}>{stat.value}</div>
-                </div>
-              </div>
-            ))}
-          </div>
-
-          {/* Graph and Table Section */}
-          <div style={{ display: 'grid', gridTemplateColumns: '3fr 2fr', gap: '30px' }}>
-            
-            {/* Recharts Graph */}
-            <div style={{ background: 'white', padding: '25px', borderRadius: '16px', boxShadow: '0 4px 20px rgba(0,0,0,0.05)' }}>
-              <h3 style={{ margin: '0 0 20px 0', fontSize: '18px', color: '#1f2937' }}>Daily Classroom Duration (Minutes)</h3>
-              {chartData.length > 0 ? (
-                <div style={{ height: '350px', width: '100%' }}>
-                  <ResponsiveContainer width="100%" height="100%">
-                    <BarChart data={chartData} margin={{ top: 20, right: 30, left: 0, bottom: 5 }}>
-                      <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f3f4f6" />
-                      <XAxis dataKey="date" axisLine={false} tickLine={false} tick={{fill: '#6b7280', fontSize: 12}} dy={10} />
-                      <YAxis axisLine={false} tickLine={false} tick={{fill: '#6b7280', fontSize: 12}} dx={-10} />
-                      <Tooltip cursor={{fill: '#f3f4f6'}} contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 15px rgba(0,0,0,0.1)' }} />
-                      <Bar dataKey="duration" fill="#8b5cf6" radius={[6, 6, 0, 0]} barSize={40} />
-                    </BarChart>
-                  </ResponsiveContainer>
-                </div>
-              ) : (
-                <div style={{ height: '350px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#9ca3af', background: '#f9fafb', borderRadius: '12px' }}>
-                  No attendance data available for chart.
-                </div>
-              )}
-            </div>
-
-            {/* Detailed Logs Table */}
-            <div style={{ background: 'white', padding: '25px', borderRadius: '16px', boxShadow: '0 4px 20px rgba(0,0,0,0.05)', display: 'flex', flexDirection: 'column' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
-                <h3 style={{ margin: 0, fontSize: '18px', color: '#1f2937' }}>Recent Attendance Logs</h3>
-                <button onClick={exportToExcel} style={{ background: '#10b981', color: 'white', border: 'none', padding: '8px 16px', borderRadius: '8px', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px', fontSize: '14px' }}>
-                  <span>📊</span> Export Excel
-                </button>
-              </div>
-              <div style={{ flex: 1, overflowY: 'auto', maxHeight: '350px', paddingRight: '10px' }}>
-                {records.length > 0 ? (
-                  <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '14px' }}>
-                    <thead>
-                      <tr style={{ color: '#6b7280', borderBottom: '2px solid #f3f4f6' }}>
-                        <th style={{ padding: '12px 8px', fontWeight: 600 }}>Date</th>
-                        <th style={{ padding: '12px 8px', fontWeight: 600 }}>First In</th>
-                        <th style={{ padding: '12px 8px', fontWeight: 600 }}>Last Out</th>
-                        <th style={{ padding: '12px 8px', fontWeight: 600 }}>Duration</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {records.map((r, i) => (
-                        <tr key={i} style={{ borderBottom: '1px solid #f3f4f6' }}>
-                          <td style={{ padding: '14px 8px', color: '#1f2937', fontWeight: 500 }}>{r.date.split('-').reverse().join('/')}</td>
-                          <td style={{ padding: '14px 8px', color: '#10b981', fontWeight: 600 }}>{r.firstIn}</td>
-                          <td style={{ padding: '14px 8px', color: '#f59e0b', fontWeight: 600 }}>{r.lastOut}</td>
-                          <td style={{ padding: '14px 8px', color: '#6366f1', fontWeight: 600 }}>
-                            {r.durationSeconds !== undefined 
-                              ? `${Math.floor(r.durationSeconds / 3600)}h ${Math.floor((r.durationSeconds % 3600) / 60)}m ${r.durationSeconds % 60}s` 
-                              : `${Math.floor(r.durationMinutes/60)}h ${r.durationMinutes%60}m`}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                ) : (
-                  <div style={{ padding: '40px 0', textAlign: 'center', color: '#9ca3af' }}>No recent logs found.</div>
-                )}
-              </div>
-            </div>
-          </div>
-            </>
-          )}
-
-          {activeTab === 'fees' && (
-            <div style={{ background: 'white', padding: '30px', borderRadius: '16px', boxShadow: '0 4px 20px rgba(0,0,0,0.05)' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '30px' }}>
-                <h2 style={{ margin: 0, fontSize: '22px', color: '#1f2937' }}>Fee Management</h2>
-                <button 
-                  onClick={() => window.print()}
-                  style={{ background: '#3b82f6', color: 'white', border: 'none', padding: '10px 20px', borderRadius: '8px', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <span>🖨️</span> Print Fee Receipt
-                </button>
-              </div>
-
-              {/* Fee Info Cards */}
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '20px', marginBottom: '30px' }}>
-                <div style={{ padding: '20px', borderRadius: '12px', background: '#eff6ff', border: '1px solid #bfdbfe' }}>
-                  <div style={{ fontSize: '14px', color: '#3b82f6', fontWeight: 600, marginBottom: '5px' }}>Total Fees</div>
-                  <div style={{ fontSize: '28px', fontWeight: 800, color: '#1e3a8a' }}>₹ {student.fee || 0}</div>
-                </div>
-                <div style={{ padding: '20px', borderRadius: '12px', background: '#dcfce7', border: '1px solid #bbf7d0' }}>
-                  <div style={{ fontSize: '14px', color: '#22c55e', fontWeight: 600, marginBottom: '5px' }}>Fees Paid</div>
-                  <div style={{ fontSize: '28px', fontWeight: 800, color: '#166534' }}>₹ {student.amountReceived || 0}</div>
-                </div>
-                <div style={{ padding: '20px', borderRadius: '12px', background: '#fee2e2', border: '1px solid #fecaca' }}>
-                  <div style={{ fontSize: '14px', color: '#ef4444', fontWeight: 600, marginBottom: '5px' }}>Remaining Due</div>
-                  <div style={{ fontSize: '28px', fontWeight: 800, color: '#991b1b' }}>₹ {student.dueFees !== undefined ? student.dueFees : ((student.fee || 0) - (student.amountReceived || 0))}</div>
-                </div>
-              </div>
-
-              {/* Pay Fee Form */}
-              <div style={{ padding: '25px', border: '1px solid #e5e7eb', borderRadius: '12px', background: '#f9fafb' }}>
-                <h3 style={{ margin: '0 0 20px 0', fontSize: '18px', color: '#374151' }}>Record New Payment</h3>
-                <div style={{ display: 'flex', gap: '20px', alignItems: 'flex-end', flexWrap: 'wrap' }}>
-                  <div style={{ flex: '1 1 200px' }}>
-                    <label style={{ display: 'block', fontSize: '13px', marginBottom: '8px', color: '#4b5563', fontWeight: '600' }}>Total Fee Amount</label>
-                    <input type="number" name="fee" value={editForm.fee || ''} onChange={handleEditChange} style={{ width: '100%', padding: '12px', borderRadius: '8px', border: '1px solid #d1d5db', outline: 'none' }} />
-                  </div>
-                  <div style={{ flex: '1 1 200px' }}>
-                    <label style={{ display: 'block', fontSize: '13px', marginBottom: '8px', color: '#4b5563', fontWeight: '600' }}>Payment Amount (₹)</label>
-                    <input type="number" value={paymentAmount} onChange={(e) => setPaymentAmount(e.target.value)} placeholder="e.g. 5000" style={{ width: '100%', padding: '12px', borderRadius: '8px', border: '1px solid #d1d5db', outline: 'none' }} />
-                  </div>
-                  <div style={{ flex: '1 1 200px' }}>
-                    <label style={{ display: 'block', fontSize: '13px', marginBottom: '8px', color: '#4b5563', fontWeight: '600' }}>Payment Mode</label>
-                    <select name="paymentMode" value={editForm.paymentMode || ''} onChange={handleEditChange} style={{ width: '100%', padding: '12px', borderRadius: '8px', border: '1px solid #d1d5db', outline: 'none', background: 'white' }}>
-                      <option value="">Select Mode</option>
-                      <option value="Cash">Cash</option>
-                      <option value="Online">Online</option>
-                      <option value="Cheque">Cheque</option>
-                    </select>
-                  </div>
-                  <div style={{ flex: '1 1 200px' }}>
-                    <label style={{ display: 'block', fontSize: '13px', marginBottom: '8px', color: '#4b5563', fontWeight: '600' }}>Cheque/Txn No.</label>
-                    <input type="text" name="chequeNo" value={editForm.chequeNo || ''} onChange={handleEditChange} placeholder="e.g. TXN123456" style={{ width: '100%', padding: '12px', borderRadius: '8px', border: '1px solid #d1d5db', outline: 'none' }} />
-                  </div>
-                  <div style={{ flex: '1 1 200px' }}>
-                    <label style={{ display: 'block', fontSize: '13px', marginBottom: '8px', color: '#4b5563', fontWeight: '600' }}>New Remaining Due</label>
-                    <div style={{ width: '100%', padding: '12px', borderRadius: '8px', border: '1px solid #d1d5db', background: '#f3f4f6', color: '#4b5563', fontWeight: '600' }}>
-                      { (Number(editForm.fee) || 0) - ((Number(student.amountReceived) || 0) + (Number(paymentAmount) || 0)) }
+    return (
+        <div style={{ padding: '20px', maxWidth: '1200px', margin: '0 auto', fontFamily: '"Inter", sans-serif' }}>
+            <div style={{ display: 'flex', gap: '25px', alignItems: 'flex-start' }}>
+                {/* Left Panel */}
+                <div style={{ flex: '0 0 320px', background: 'white', borderRadius: '12px', padding: '25px', boxShadow: '0 4px 15px rgba(0,0,0,0.05)' }}>
+                    <div style={{ display: 'inline-block', background: '#f3e8ff', color: '#a855f7', padding: '6px 14px', borderRadius: '20px', fontSize: '14px', fontWeight: '600', marginBottom: '25px' }}>
+                        👤 {teacher.role === 'staff' ? 'Staff Profile' : 'Teacher Profile'}
                     </div>
-                  </div>
-                  <button onClick={handleFeePayment} style={{ background: '#10b981', color: 'white', border: 'none', padding: '12px 24px', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer', transition: 'background 0.2s', flex: '1 1 200px' }}>
-                    Confirm Payment
-                  </button>
-                </div>
-              </div>
-            </div>
-          )}
 
+                    <div style={{ display: 'flex', gap: '20px', marginBottom: '30px', alignItems: 'center' }}>
+                        {teacher.photo ? (
+                            <img src={(teacher.photo.startsWith('http') || teacher.photo.startsWith('data:')) ? teacher.photo : `http://${backendHost}:8080${teacher.photo}`} alt="Profile" style={{ width: '80px', height: '80px', borderRadius: '50%', objectFit: 'cover', border: '3px solid #e2e8f0' }} />
+                        ) : (
+                            <div style={{ width: '80px', height: '80px', borderRadius: '50%', background: '#dcfce7', color: '#22c55e', display: 'flex', justifyContent: 'center', alignItems: 'center', fontSize: '32px', fontWeight: 'bold' }}>
+                                {teacher.name.substring(0, 2).toUpperCase()}
+                            </div>
+                        )}
+                        <div>
+                            <div style={{ fontSize: '14px', color: '#64748b' }}>Full Name:</div>
+                            <div style={{ fontSize: '18px', fontWeight: '600', color: '#1e293b' }}>{teacher.name}</div>
+                        </div>
+                    </div>
+
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '15px', color: '#475569', fontSize: '14px' }}>
+                        <div><strong>Email:</strong> {teacher.email || 'N/A'}</div>
+                        <div><strong>Telephone:</strong> {teacher.studentContact || teacher.phone || 'N/A'}</div>
+                        <div><strong>Biometric Id:</strong> {teacher.fingerprint_id}</div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            <strong>Status:</strong>
+                            <span style={{ background: '#dcfce7', color: '#16a34a', padding: '4px 12px', borderRadius: '12px', fontSize: '12px', fontWeight: '600' }}>Active</span>
+                        </div>
+                    </div>
+
+                    <div style={{ display: 'flex', gap: '10px', marginTop: '30px' }}>
+                        <button style={{ flex: 1, background: '#8b5cf6', color: 'white', border: 'none', padding: '10px', borderRadius: '8px', fontWeight: '600', cursor: 'pointer' }}>☁️ Upload</button>
+                        <button style={{ flex: 1, background: '#fca5a5', color: 'white', border: 'none', padding: '10px', borderRadius: '8px', fontWeight: '600', cursor: 'pointer' }}>🗑️ Delete</button>
+                    </div>
+
+                    <div style={{ marginTop: '35px' }}>
+                        <div style={{ display: 'inline-block', background: '#f3e8ff', color: '#8b5cf6', padding: '6px 16px', borderRadius: '20px', fontWeight: '600', marginBottom: '15px', fontSize: '14px' }}>
+                            Quick Links
+                        </div>
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                            <button onClick={() => setActiveTab('device')} style={{ background: 'white', color: '#8b5cf6', border: '1px solid #8b5cf6', padding: '10px', borderRadius: '8px', fontWeight: '600', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', fontSize: '14px' }}>
+                                <span style={{ fontSize: '16px' }}>👆</span> Punches
+                            </button>
+                            <button style={{ background: 'white', color: '#64748b', border: '1px solid #cbd5e1', padding: '10px', borderRadius: '8px', fontWeight: '600', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', fontSize: '14px' }}>
+                                <span style={{ fontSize: '16px' }}>☑️</span> Lectures
+                            </button>
+                            <button style={{ background: 'white', color: '#ef4444', border: '1px solid #ef4444', padding: '10px', borderRadius: '8px', fontWeight: '600', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', fontSize: '14px' }}>
+                                <span style={{ fontSize: '16px', border: '1px solid #ef4444', borderRadius: '50%', width: '18px', height: '18px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>₹</span> Salary
+                            </button>
+                            <button style={{ background: 'white', color: '#22c55e', border: '1px solid #22c55e', padding: '10px', borderRadius: '8px', fontWeight: '600', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', fontSize: '14px' }}>
+                                <span style={{ fontSize: '16px' }}>📈</span> Performance
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                {/* Right Panel */}
+                <div style={{ flex: 1, background: 'white', borderRadius: '12px', boxShadow: '0 4px 15px rgba(0,0,0,0.05)', overflow: 'hidden' }}>
+                    {/* Tabs */}
+                    <div style={{ display: 'flex', borderBottom: '1px solid #e2e8f0' }}>
+                        <button onClick={() => setActiveTab('subjects')} style={{ flex: 1, padding: '15px', background: 'none', border: 'none', borderBottom: activeTab === 'subjects' ? '3px solid #8b5cf6' : '3px solid transparent', color: activeTab === 'subjects' ? '#8b5cf6' : '#64748b', fontWeight: '600', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
+                            🖥️ Subjects
+                        </button>
+                        <button onClick={() => setActiveTab('profile')} style={{ flex: 1, padding: '15px', background: 'none', border: 'none', borderBottom: activeTab === 'profile' ? '3px solid #8b5cf6' : '3px solid transparent', color: activeTab === 'profile' ? '#8b5cf6' : '#64748b', fontWeight: '600', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
+                            📝 Profile
+                        </button>
+                        <button onClick={() => setActiveTab('device')} style={{ flex: 1, padding: '15px', background: 'none', border: 'none', borderBottom: activeTab === 'device' ? '3px solid #8b5cf6' : '3px solid transparent', color: activeTab === 'device' ? '#8b5cf6' : '#64748b', fontWeight: '600', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
+                            👆 Punches
+                        </button>
+                    </div>
+
+                    {/* Tab Content */}
+                    <div style={{ padding: '25px' }}>
+                        {activeTab === 'subjects' && (
+                            <div>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '20px' }}>
+                                    <button style={{ background: '#8b5cf6', color: 'white', border: 'none', padding: '8px 16px', borderRadius: '6px', fontWeight: '600', cursor: 'pointer' }}>+ Subject</button>
+                                    <select style={{ padding: '8px 12px', borderRadius: '6px', border: '1px solid #cbd5e1', color: '#64748b', outline: 'none' }}>
+                                        <option>Default Year</option>
+                                    </select>
+                                </div>
+                                <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '13px' }}>
+                                    <thead>
+                                        <tr style={{ background: '#f8fafc', color: '#475569' }}>
+                                            <th style={{ padding: '12px' }}>YEAR ↑</th>
+                                            <th style={{ padding: '12px' }}>SUBJECT/ BATCH ↑</th>
+                                            <th style={{ padding: '12px' }}>HOURS ↑</th>
+                                            <th style={{ padding: '12px' }}>COVERAGE ↑</th>
+                                            <th style={{ padding: '12px' }}>IMPACT ↑</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <tr>
+                                            <td colSpan="5" style={{ padding: '30px', textAlign: 'center', color: '#94a3b8' }}>
+                                                {teacher.role === 'teacher' && teacher.subject ? (
+                                                    <div>
+                                                        <strong>{teacher.subject}</strong> - {teacher.batch || 'N/A'}
+                                                    </div>
+                                                ) : 'No data available in table'}
+                                            </td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        )}
+                        {activeTab === 'profile' && (
+                            <div style={{ color: '#475569', lineHeight: '1.6' }}>
+                                <h3 style={{ marginTop: 0, color: '#1e293b' }}>Personal Information</h3>
+                                <p><strong>Role:</strong> <span style={{ textTransform: 'capitalize' }}>{teacher.role}</span></p>
+                                <p><strong>Experience:</strong> {teacher.experience || 'N/A'}</p>
+                                <p><strong>Timing:</strong> {teacher.timing || 'N/A'}</p>
+                                <p><strong>Salary:</strong> ₹ {teacher.salary || 0}</p>
+                                <p><strong>Aadhar:</strong> {teacher.aadhar || 'N/A'}</p>
+                                <p><strong>Gender:</strong> {teacher.gender || 'N/A'}</p>
+                            </div>
+                        )}
+                        {activeTab === 'device' && (
+                            <div style={{ display: 'flex', gap: '25px' }}>
+                                {/* Left Filter Panel */}
+                                <div style={{ flex: '0 0 220px', background: 'white', padding: '20px', borderRadius: '12px', border: '1px solid #e2e8f0', boxShadow: '0 2px 10px rgba(0,0,0,0.02)' }}>
+                                    <div style={{ display: 'inline-block', background: '#f3e8ff', color: '#8b5cf6', padding: '6px 16px', borderRadius: '20px', fontSize: '13px', fontWeight: '600', marginBottom: '25px' }}>
+                                        Filter
+                                    </div>
+                                    <div style={{ marginBottom: '20px' }}>
+                                        <label style={{ display: 'block', fontSize: '13px', color: '#64748b', marginBottom: '8px', fontWeight: '500' }}>Month</label>
+                                        <select value={filterMonth} onChange={e => setFilterMonth(e.target.value)} style={{ width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid #cbd5e1', outline: 'none', color: '#475569', backgroundColor: '#f8fafc' }}>
+                                            <option value={1}>January</option>
+                                            <option value={2}>February</option>
+                                            <option value={3}>March</option>
+                                            <option value={4}>April</option>
+                                            <option value={5}>May</option>
+                                            <option value={6}>June</option>
+                                            <option value={7}>July</option>
+                                            <option value={8}>August</option>
+                                            <option value={9}>September</option>
+                                            <option value={10}>October</option>
+                                            <option value={11}>November</option>
+                                            <option value={12}>December</option>
+                                        </select>
+                                    </div>
+                                    <div style={{ marginBottom: '30px' }}>
+                                        <label style={{ display: 'block', fontSize: '13px', color: '#64748b', marginBottom: '8px', fontWeight: '500' }}>Year</label>
+                                        <select value={filterYear} onChange={e => setFilterYear(e.target.value)} style={{ width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid #cbd5e1', outline: 'none', color: '#475569', backgroundColor: '#f8fafc' }}>
+                                            <option value={new Date().getFullYear()}> {new Date().getFullYear()} </option>
+                                            <option value={new Date().getFullYear() - 1}> {new Date().getFullYear() - 1} </option>
+                                            <option value={new Date().getFullYear() - 2}> {new Date().getFullYear() - 2} </option>
+                                        </select>
+                                    </div>
+                                    <button onClick={() => fetchTeacherData(filterMonth, filterYear)} style={{ width: '100%', background: '#8b5cf6', color: 'white', border: 'none', padding: '12px', borderRadius: '8px', fontWeight: '600', cursor: 'pointer', transition: 'background 0.2s', ':hover': { background: '#7c3aed' } }}>
+                                        Get Punches
+                                    </button>
+                                </div>
+
+                                {/* Right Table Panel */}
+                                <div style={{ flex: 1 }}>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+                                        <h3 style={{ margin: 0, color: '#1e293b', fontSize: '18px' }}>{teacher.name}</h3>
+                                        <div style={{ position: 'relative' }}>
+                                            <button onClick={() => setExportMenuOpen(!exportMenuOpen)} style={{ background: '#f3e8ff', color: '#8b5cf6', border: 'none', padding: '8px 16px', borderRadius: '6px', fontWeight: '600', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px' }}>
+                                                <span>📤</span> Export <span style={{ fontSize: '10px' }}>▼</span>
+                                            </button>
+                                            {exportMenuOpen && (
+                                                <div style={{ position: 'absolute', top: '100%', right: 0, marginTop: '8px', background: 'white', border: '1px solid #e2e8f0', borderRadius: '8px', boxShadow: '0 4px 15px rgba(0,0,0,0.1)', zIndex: 10, minWidth: '150px', overflow: 'hidden' }}>
+                                                    <button onClick={() => handleExport('excel')} style={{ width: '100%', padding: '12px 16px', border: 'none', background: 'white', textAlign: 'left', cursor: 'pointer', fontSize: '13px', color: '#475569', display: 'flex', alignItems: 'center', gap: '10px', borderBottom: '1px solid #f1f5f9' }}>
+                                                        <span style={{ color: '#10b981' }}>📊</span> Excel (.xlsx)
+                                                    </button>
+                                                    <button onClick={() => handleExport('csv')} style={{ width: '100%', padding: '12px 16px', border: 'none', background: 'white', textAlign: 'left', cursor: 'pointer', fontSize: '13px', color: '#475569', display: 'flex', alignItems: 'center', gap: '10px', borderBottom: '1px solid #f1f5f9' }}>
+                                                        <span style={{ color: '#f59e0b' }}>📝</span> CSV (.csv)
+                                                    </button>
+                                                    <button onClick={() => handleExport('pdf')} style={{ width: '100%', padding: '12px 16px', border: 'none', background: 'white', textAlign: 'left', cursor: 'pointer', fontSize: '13px', color: '#475569', display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                                        <span style={{ color: '#ef4444' }}>📄</span> PDF (.pdf)
+                                                    </button>
+                                                </div>
+                                            )}
+                                        </div>
+                                    </div>
+
+                                    <input type="text" placeholder="Search..." style={{ width: '100%', padding: '12px 16px', borderRadius: '8px', border: '1px solid #e2e8f0', marginBottom: '20px', outline: 'none', color: '#475569', fontSize: '14px', backgroundColor: '#f8fafc' }} />
+
+                                    <div style={{ maxHeight: '450px', overflowY: 'auto', border: '1px solid #e2e8f0', borderRadius: '8px', backgroundColor: 'white' }}>
+                                        {data.records && data.records.length > 0 ? (
+                                            <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '13px' }}>
+                                                <thead style={{ position: 'sticky', top: 0, zIndex: 1 }}>
+                                                    <tr style={{ background: '#f8fafc', color: '#64748b', fontSize: '12px', letterSpacing: '0.5px' }}>
+                                                        <th style={{ padding: '15px 12px', borderBottom: '1px solid #e2e8f0', fontWeight: '600' }}>DATE</th>
+                                                        <th style={{ padding: '15px 12px', borderBottom: '1px solid #e2e8f0', fontWeight: '600' }}>IN / OUT</th>
+                                                        <th style={{ padding: '15px 12px', borderBottom: '1px solid #e2e8f0', fontWeight: '600' }}>PUNCHES</th>
+                                                        <th style={{ padding: '15px 12px', borderBottom: '1px solid #e2e8f0', fontWeight: '600' }}>TOTAL HOURS</th>
+                                                        <th style={{ padding: '15px 12px', borderBottom: '1px solid #e2e8f0', fontWeight: '600' }}>STATUS</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody>
+                                                    {data.records.map((r, i) => (
+                                                        <tr key={i} style={{ borderBottom: '1px solid #f1f5f9', ':hover': { backgroundColor: '#f8fafc' } }}>
+                                                            <td style={{ padding: '15px 12px', fontWeight: '500', color: '#1e293b' }}>{r.date}</td>
+                                                            <td style={{ padding: '15px 12px', color: '#64748b' }}>
+                                                                {r.firstIn !== '--:--' ? (
+                                                                    <div style={{ display: 'flex', gap: '5px', alignItems: 'center' }}>
+                                                                        <span style={{ color: '#10b981', fontWeight: '600' }}>{r.firstIn}</span> /
+                                                                        <span style={{ color: '#f59e0b', fontWeight: '600' }}>{r.lastOut}</span>
+                                                                    </div>
+                                                                ) : (
+                                                                    <span style={{ color: '#94a3b8' }}>--:-- / --:--</span>
+                                                                )}
+                                                            </td>
+                                                            <td style={{ padding: '15px 12px', color: '#64748b' }}>{r.totalEntries || 0}</td>
+                                                            <td style={{ padding: '15px 12px', color: '#1e293b', fontWeight: '500' }}>
+                                                                {r.durationMinutes ? `${Math.floor(r.durationMinutes / 60)}h ${r.durationMinutes % 60}m` : '0h 0m'}
+                                                            </td>
+                                                            <td style={{ padding: '15px 12px' }}>
+                                                                {r.status === 'Late' ? (
+                                                                    <span style={{ background: '#fef5e7', color: '#e67e22', padding: '4px 10px', borderRadius: '6px', fontSize: '11px', fontWeight: '600' }}>Late</span>
+                                                                ) : r.status === 'Absent' ? (
+                                                                    <span style={{ background: '#fef2f2', color: '#ef4444', padding: '4px 10px', borderRadius: '6px', fontSize: '11px', fontWeight: '600' }}>Absent</span>
+                                                                ) : r.status === 'Sunday' ? (
+                                                                    <span style={{ background: '#f8fafc', color: '#64748b', padding: '4px 10px', borderRadius: '6px', fontSize: '11px', fontWeight: '600' }}>Sunday</span>
+                                                                ) : (
+                                                                    <span style={{ color: '#10b981', fontWeight: '600' }}>Present</span>
+                                                                )}
+                                                            </td>
+                                                        </tr>
+                                                    ))}
+                                                </tbody>
+                                            </table>
+                                        ) : (
+                                            <div style={{ padding: '40px', textAlign: 'center', color: '#94a3b8' }}>No data available in table</div>
+                                        )}
+                                    </div>
+
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', padding: '20px 0 10px 0', color: '#1e293b', fontSize: '14px', fontWeight: '600' }}>
+                                        <div>TOTAL</div>
+                                        <div>{data.summary ? data.summary.totalHours : '0.00'} HRS</div>
+                                    </div>
+                                    <div style={{ color: '#94a3b8', fontSize: '13px' }}>
+                                        Showing {data.records ? data.records.length : 0} out of {data.records ? data.records.length : 0} entries
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+                    </div>
+                </div>
+            </div>
         </div>
-      </div>
-    </div>
-  );
+    );
+};
+
+const StudentProfilePage = () => {
+    const { id } = useParams();
+    const [data, setData] = useState(null);
+    const [loading, setLoading] = useState(true);
+    const [isEditing, setIsEditing] = useState(false);
+    const [editForm, setEditForm] = useState({});
+    const [activeTab, setActiveTab] = useState('punches');
+    const [paymentAmount, setPaymentAmount] = useState('');
+
+    const fetchStudentData = () => {
+        api.get(`/attendance/student/${id}`)
+            .then(res => {
+                setData(res.data);
+                setEditForm(res.data.student);
+                setLoading(false);
+            })
+            .catch(err => {
+                console.error(err);
+                setLoading(false);
+            });
+    };
+
+    useEffect(() => {
+        fetchStudentData();
+
+        const handleLivePunch = (punch) => {
+            // Refresh if the punch belongs to this student
+            if (punch.userId === id || punch.fingerprint_id === id) {
+                fetchStudentData();
+            }
+        };
+
+        socket.on('live_punch', handleLivePunch);
+        return () => socket.off('live_punch', handleLivePunch);
+    }, [id]);
+
+    const handleEditChange = (e) => {
+        const { name, value } = e.target;
+        let newForm = { ...editForm, [name]: value };
+
+        // Auto-calculate remaining due if fee or amount paid changes
+        if (name === 'fee' || name === 'amountReceived') {
+            const total = Number(newForm.fee) || 0;
+            const paid = Number(newForm.amountReceived) || 0;
+            newForm.dueFees = total - paid;
+        }
+
+        setEditForm(newForm);
+    };
+
+    const handleSave = async () => {
+        try {
+            await api.put(`/users/${id}`, editForm);
+            setData({ ...data, student: editForm });
+            setIsEditing(false);
+        } catch (err) {
+            console.error('Failed to save profile:', err);
+            alert('Failed to save profile: ' + (err.response?.data?.error || err.message));
+        }
+    };
+
+    const handleFeePayment = async () => {
+        try {
+            const payment = Number(paymentAmount) || 0;
+            const currentPaid = Number(data.student.amountReceived) || 0;
+            const totalFee = Number(editForm.fee) || 0;
+
+            const newPaid = currentPaid + payment;
+            const newDue = totalFee - newPaid;
+
+            const payload = { ...editForm, amountReceived: newPaid, dueFees: newDue };
+
+            await api.put(`/users/${id}`, payload);
+            setData({ ...data, student: payload });
+            setEditForm(payload);
+            setPaymentAmount('');
+            alert('Fee payment recorded successfully!');
+        } catch (err) {
+            console.error(err);
+            alert('Failed to record payment');
+        }
+    };
+
+    const exportToExcel = () => {
+        if (!data || !data.records) return;
+
+        // Headers
+        const headers = ["Student Name", "Date", "First In", "Last Out", "Duration"];
+
+        const rows = data.records.map(r => {
+            const durationStr = r.durationSeconds !== undefined
+                ? `${Math.floor(r.durationSeconds / 3600)}h ${Math.floor((r.durationSeconds % 3600) / 60)}m ${r.durationSeconds % 60}s`
+                : `${Math.floor(r.durationMinutes / 60)}h ${r.durationMinutes % 60}m`;
+
+            return [
+                `"${data.student.name}"`,
+                `"${r.date.split('-').reverse().join('/')}"`,
+                `"${r.firstIn}"`,
+                `"${r.lastOut}"`,
+                `"${durationStr}"`
+            ].join(',');
+        });
+
+        const csvContent = [headers.join(','), ...rows].join('\n');
+        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.setAttribute("href", url);
+        link.setAttribute("download", `${data.student.name}_Attendance.csv`);
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+    };
+
+    if (loading) return <div style={{ padding: '40px', textAlign: 'center', fontSize: '18px', color: '#666' }}>Loading Student Profile...</div>;
+    if (!data) return <div style={{ padding: '40px', textAlign: 'center', fontSize: '18px', color: '#e74c3c' }}>Student Profile Not Found.</div>;
+
+    const { student, summary, records } = data;
+
+    // Format records for Recharts
+    const chartData = [...records].reverse().map(r => ({
+        date: r.date.split('-').slice(1).reverse().join('/'), // DD/MM
+        duration: r.durationMinutes || 0
+    }));
+
+    return (
+        <div style={{ maxWidth: '1200px', margin: '0 auto', display: 'flex', flexDirection: 'column', gap: '30px' }}>
+
+            {/* Header Profile Section */}
+            <div style={{ background: 'white', borderRadius: '16px', padding: '30px', boxShadow: '0 4px 20px rgba(0,0,0,0.05)', display: 'flex', gap: '30px', alignItems: 'center', position: 'relative' }}>
+                {student.photo ? (
+                    <img
+                        src={`http://${backendHost}:8080${student.photo}`}
+                        alt={student.name}
+                        style={{ width: '100px', height: '100px', borderRadius: '50%', objectFit: 'cover', border: '3px solid #8b5cf6', boxShadow: '0 4px 10px rgba(139,92,246,0.2)' }}
+                    />
+                ) : (
+                    <div style={{ width: '100px', height: '100px', borderRadius: '50%', background: 'linear-gradient(135deg, #8b5cf6, #d946ef)', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '40px', fontWeight: 'bold', border: '3px solid white', boxShadow: '0 4px 10px rgba(0,0,0,0.1)' }}>
+                        {student.name.charAt(0).toUpperCase()}
+                    </div>
+                )}
+                <div style={{ flex: 1 }}>
+                    <h1 style={{ margin: '0 0 10px 0', fontSize: '28px', color: '#1f2937' }}>{student.name}</h1>
+                    <div style={{ display: 'flex', gap: '20px', color: '#6b7280', fontSize: '15px', flexWrap: 'wrap' }}>
+                        <div><strong style={{ color: '#374151' }}>Register No:</strong> {student.fingerprint_id}</div>
+                        <div><strong style={{ color: '#374151' }}>Email:</strong> {student.email || 'N/A'}</div>
+                        <div><strong style={{ color: '#374151' }}>Student Phone:</strong> {student.studentPhone || 'N/A'}</div>
+                        <div><strong style={{ color: '#374151' }}>Mother Phone:</strong> {student.motherPhone || 'N/A'}</div>
+                        <div><strong style={{ color: '#374151' }}>Father Phone:</strong> {student.fatherPhone || 'N/A'}</div>
+                        <div><strong style={{ color: '#374151' }}>Branch:</strong> {student.branch || 'N/A'}</div>
+                    </div>
+                </div>
+                <div style={{ position: 'absolute', top: '30px', right: '30px', display: 'flex', gap: '10px' }}>
+                    <button
+                        onClick={() => window.print()}
+                        style={{ background: '#3b82f6', border: 'none', padding: '8px 16px', borderRadius: '8px', cursor: 'pointer', fontWeight: 600, color: 'white', transition: 'all 0.2s' }}>
+                        🖨️ Print Receipt
+                    </button>
+                    <button
+                        onClick={() => setIsEditing(true)}
+                        style={{ background: '#f3f4f6', border: 'none', padding: '8px 16px', borderRadius: '8px', cursor: 'pointer', fontWeight: 600, color: '#4b5563', transition: 'all 0.2s' }}>
+                        ✏️ Edit Profile
+                    </button>
+                </div>
+            </div>
+
+            {/* Hidden receipt for printing */}
+            <ReceiptPrintView student={student} />
+
+            {/* Edit Modal */}
+            {isEditing && (
+                <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.6)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 1000 }}>
+                    <div style={{ background: 'white', padding: '30px', borderRadius: '16px', width: '600px', boxShadow: '0 10px 25px rgba(0,0,0,0.1)' }}>
+                        <h2 style={{ marginTop: 0, marginBottom: '20px', fontSize: '22px', color: '#1f2937' }}>Edit Profile</h2>
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px' }}>
+                            <div>
+                                <label style={{ display: 'block', fontSize: '13px', marginBottom: '5px', color: '#4b5563' }}>Full Name</label>
+                                <input name="name" value={editForm.name || ''} onChange={handleEditChange} style={{ width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid #d1d5db', outline: 'none' }} />
+                            </div>
+                            <div>
+                                <label style={{ display: 'block', fontSize: '13px', marginBottom: '5px', color: '#4b5563' }}>Profile Photo</label>
+                                <input type="file" accept="image/*" onChange={(e) => {
+                                    const file = e.target.files[0];
+                                    if (file) {
+                                        const reader = new FileReader();
+                                        reader.onload = (ev) => setEditForm({ ...editForm, photo: ev.target.result });
+                                        reader.readAsDataURL(file);
+                                    }
+                                }} style={{ width: '100%', padding: '7px', borderRadius: '8px', border: '1px solid #d1d5db', outline: 'none', background: 'white' }} />
+                            </div>
+                            <div>
+                                <label style={{ display: 'block', fontSize: '13px', marginBottom: '5px', color: '#4b5563' }}>Email</label>
+                                <input name="email" value={editForm.email || ''} onChange={handleEditChange} style={{ width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid #d1d5db', outline: 'none' }} />
+                            </div>
+                            <div>
+                                <label style={{ display: 'block', fontSize: '13px', marginBottom: '5px', color: '#4b5563' }}>Student Phone</label>
+                                <input name="studentPhone" value={editForm.studentPhone || ''} onChange={handleEditChange} style={{ width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid #d1d5db', outline: 'none' }} />
+                            </div>
+                            <div>
+                                <label style={{ display: 'block', fontSize: '13px', marginBottom: '5px', color: '#4b5563' }}>Mother Phone</label>
+                                <input name="motherPhone" value={editForm.motherPhone || ''} onChange={handleEditChange} style={{ width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid #d1d5db', outline: 'none' }} />
+                            </div>
+                            <div>
+                                <label style={{ display: 'block', fontSize: '13px', marginBottom: '5px', color: '#4b5563' }}>Father Phone</label>
+                                <input name="fatherPhone" value={editForm.fatherPhone || ''} onChange={handleEditChange} style={{ width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid #d1d5db', outline: 'none' }} />
+                            </div>
+                            <div>
+                                <label style={{ display: 'block', fontSize: '13px', marginBottom: '5px', color: '#4b5563' }}>Branch</label>
+                                <input name="branch" value={editForm.branch || ''} onChange={handleEditChange} style={{ width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid #d1d5db', outline: 'none' }} />
+                            </div>
+                        </div>
+                        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '25px' }}>
+                            <button onClick={() => setIsEditing(false)} style={{ background: 'transparent', border: '1px solid #d1d5db', padding: '10px 20px', borderRadius: '8px', cursor: 'pointer', fontWeight: 600, color: '#4b5563' }}>Cancel</button>
+                            <button onClick={handleSave} style={{ background: '#8b5cf6', color: 'white', border: 'none', padding: '10px 20px', borderRadius: '8px', cursor: 'pointer', fontWeight: 600 }}>Save Changes</button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            <div style={{ display: 'flex', gap: '30px', alignItems: 'flex-start' }}>
+                {/* Quick Links Sidebar */}
+                <div style={{ width: '240px', display: 'flex', flexDirection: 'column', gap: '15px', flexShrink: 0 }}>
+                    <div style={{ background: '#f3e8ff', color: '#9333ea', padding: '6px 16px', borderRadius: '20px', display: 'inline-block', fontWeight: 'bold', fontSize: '14px', alignSelf: 'flex-start', marginBottom: '5px' }}>Quick Links</div>
+
+                    <button onClick={() => setActiveTab('punches')} style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '12px 16px', background: activeTab === 'punches' ? '#f3e8ff' : 'white', border: '1px solid #c084fc', borderRadius: '8px', color: '#a855f7', fontWeight: '600', fontSize: '15px', cursor: 'pointer', transition: 'all 0.2s' }}>
+                        <span style={{ fontSize: '18px' }}>👆</span> Punches
+                    </button>
+
+                    <button onClick={() => setActiveTab('fees')} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 16px', background: activeTab === 'fees' ? '#fee2e2' : 'white', border: '1px solid #fca5a5', borderRadius: '8px', color: '#ef4444', fontWeight: '600', fontSize: '15px', cursor: 'pointer', transition: 'all 0.2s' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}><span style={{ fontSize: '18px' }}>₹</span> Fees</div>
+                        <span style={{ fontSize: '12px' }}>▼</span>
+                    </button>
+
+                    <button onClick={() => setActiveTab('punches')} style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '12px 16px', background: 'white', border: '1px solid #86efac', borderRadius: '8px', color: '#22c55e', fontWeight: '600', fontSize: '15px', cursor: 'pointer', transition: 'all 0.2s' }}>
+                        <span style={{ fontSize: '18px' }}>🕒</span> Attendance
+                    </button>
+
+                    <button onClick={() => window.print()} style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '12px 16px', background: 'white', border: '1px solid #7dd3fc', borderRadius: '8px', color: '#0ea5e9', fontWeight: '600', fontSize: '15px', cursor: 'pointer', transition: 'all 0.2s' }}>
+                        <span style={{ fontSize: '18px' }}>🖨️</span> Admission Form
+                    </button>
+
+                    <button onClick={() => window.print()} style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '12px 16px', background: 'white', border: '1px solid #fcd34d', borderRadius: '8px', color: '#f59e0b', fontWeight: '600', fontSize: '15px', cursor: 'pointer', transition: 'all 0.2s' }}>
+                        <span style={{ fontSize: '18px' }}>🪪</span> Icard
+                    </button>
+                </div>
+
+                {/* Main Content Area */}
+                <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '30px', minWidth: 0 }}>
+
+                    {activeTab === 'punches' && (
+                        <>
+                            {/* Stats Summary */}
+                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '20px' }}>
+                                {[
+                                    { label: 'Present Days (This Month)', value: summary.daysPresentThisMonth, color: '#22c55e', icon: '📅' },
+                                    { label: 'Absent Days (This Month)', value: summary.absentDaysThisMonth || 0, color: '#ef4444', icon: '❌' },
+                                    { label: 'Monthly Attendance %', value: `${summary.monthlyPercentage}%`, color: '#3b82f6', icon: '📊' },
+                                    { label: 'Total Hours (All Time)', value: summary.totalHours, color: '#8b5cf6', icon: '⏱️' }
+                                ].map((stat, i) => (
+                                    <div key={i} style={{ background: 'white', padding: '25px', borderRadius: '16px', boxShadow: '0 4px 20px rgba(0,0,0,0.05)', display: 'flex', alignItems: 'center', gap: '20px' }}>
+                                        <div style={{ fontSize: '32px', background: `${stat.color}15`, width: '60px', height: '60px', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: stat.color }}>{stat.icon}</div>
+                                        <div>
+                                            <div style={{ fontSize: '13px', color: '#6b7280', textTransform: 'uppercase', fontWeight: 600, letterSpacing: '0.5px', marginBottom: '4px' }}>{stat.label}</div>
+                                            <div style={{ fontSize: '24px', fontWeight: 800, color: '#1f2937' }}>{stat.value}</div>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+
+                            {/* Graph and Table Section */}
+                            <div style={{ display: 'grid', gridTemplateColumns: '3fr 2fr', gap: '30px' }}>
+
+                                {/* Recharts Graph */}
+                                <div style={{ background: 'white', padding: '25px', borderRadius: '16px', boxShadow: '0 4px 20px rgba(0,0,0,0.05)' }}>
+                                    <h3 style={{ margin: '0 0 20px 0', fontSize: '18px', color: '#1f2937' }}>Daily Classroom Duration (Minutes)</h3>
+                                    {chartData.length > 0 ? (
+                                        <div style={{ height: '350px', width: '100%' }}>
+                                            <ResponsiveContainer width="100%" height="100%">
+                                                <BarChart data={chartData} margin={{ top: 20, right: 30, left: 0, bottom: 5 }}>
+                                                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f3f4f6" />
+                                                    <XAxis dataKey="date" axisLine={false} tickLine={false} tick={{ fill: '#6b7280', fontSize: 12 }} dy={10} />
+                                                    <YAxis axisLine={false} tickLine={false} tick={{ fill: '#6b7280', fontSize: 12 }} dx={-10} />
+                                                    <Tooltip cursor={{ fill: '#f3f4f6' }} contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 15px rgba(0,0,0,0.1)' }} />
+                                                    <Bar dataKey="duration" fill="#8b5cf6" radius={[6, 6, 0, 0]} barSize={40} />
+                                                </BarChart>
+                                            </ResponsiveContainer>
+                                        </div>
+                                    ) : (
+                                        <div style={{ height: '350px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#9ca3af', background: '#f9fafb', borderRadius: '12px' }}>
+                                            No attendance data available for chart.
+                                        </div>
+                                    )}
+                                </div>
+
+                                {/* Detailed Logs Table */}
+                                <div style={{ background: 'white', padding: '25px', borderRadius: '16px', boxShadow: '0 4px 20px rgba(0,0,0,0.05)', display: 'flex', flexDirection: 'column' }}>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+                                        <h3 style={{ margin: 0, fontSize: '18px', color: '#1f2937' }}>Recent Attendance Logs</h3>
+                                        <button onClick={exportToExcel} style={{ background: '#10b981', color: 'white', border: 'none', padding: '8px 16px', borderRadius: '8px', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px', fontSize: '14px' }}>
+                                            <span>📊</span> Export Excel
+                                        </button>
+                                    </div>
+                                    <div style={{ flex: 1, overflowY: 'auto', maxHeight: '350px', paddingRight: '10px' }}>
+                                        {records.length > 0 ? (
+                                            <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '14px' }}>
+                                                <thead>
+                                                    <tr style={{ color: '#6b7280', borderBottom: '2px solid #f3f4f6' }}>
+                                                        <th style={{ padding: '12px 8px', fontWeight: 600 }}>Date</th>
+                                                        <th style={{ padding: '12px 8px', fontWeight: 600 }}>First In</th>
+                                                        <th style={{ padding: '12px 8px', fontWeight: 600 }}>Last Out</th>
+                                                        <th style={{ padding: '12px 8px', fontWeight: 600 }}>Duration</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody>
+                                                    {records.map((r, i) => (
+                                                        <tr key={i} style={{ borderBottom: '1px solid #f3f4f6' }}>
+                                                            <td style={{ padding: '14px 8px', color: '#1f2937', fontWeight: 500 }}>{r.date.split('-').reverse().join('/')}</td>
+                                                            <td style={{ padding: '14px 8px', color: '#10b981', fontWeight: 600 }}>{r.firstIn}</td>
+                                                            <td style={{ padding: '14px 8px', color: '#f59e0b', fontWeight: 600 }}>{r.lastOut}</td>
+                                                            <td style={{ padding: '14px 8px', color: '#6366f1', fontWeight: 600 }}>
+                                                                {r.durationSeconds !== undefined
+                                                                    ? `${Math.floor(r.durationSeconds / 3600)}h ${Math.floor((r.durationSeconds % 3600) / 60)}m ${r.durationSeconds % 60}s`
+                                                                    : `${Math.floor(r.durationMinutes / 60)}h ${r.durationMinutes % 60}m`}
+                                                            </td>
+                                                        </tr>
+                                                    ))}
+                                                </tbody>
+                                            </table>
+                                        ) : (
+                                            <div style={{ padding: '40px 0', textAlign: 'center', color: '#9ca3af' }}>No recent logs found.</div>
+                                        )}
+                                    </div>
+                                </div>
+                            </div>
+                        </>
+                    )}
+
+                    {activeTab === 'fees' && (
+                        <div style={{ background: 'white', padding: '30px', borderRadius: '16px', boxShadow: '0 4px 20px rgba(0,0,0,0.05)' }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '30px' }}>
+                                <h2 style={{ margin: 0, fontSize: '22px', color: '#1f2937' }}>Fee Management</h2>
+                                <button
+                                    onClick={() => window.print()}
+                                    style={{ background: '#3b82f6', color: 'white', border: 'none', padding: '10px 20px', borderRadius: '8px', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                    <span>🖨️</span> Print Fee Receipt
+                                </button>
+                            </div>
+
+                            {/* Fee Info Cards */}
+                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '20px', marginBottom: '30px' }}>
+                                <div style={{ padding: '20px', borderRadius: '12px', background: '#eff6ff', border: '1px solid #bfdbfe' }}>
+                                    <div style={{ fontSize: '14px', color: '#3b82f6', fontWeight: 600, marginBottom: '5px' }}>Total Fees</div>
+                                    <div style={{ fontSize: '28px', fontWeight: 800, color: '#1e3a8a' }}>₹ {student.fee || 0}</div>
+                                </div>
+                                <div style={{ padding: '20px', borderRadius: '12px', background: '#dcfce7', border: '1px solid #bbf7d0' }}>
+                                    <div style={{ fontSize: '14px', color: '#22c55e', fontWeight: 600, marginBottom: '5px' }}>Fees Paid</div>
+                                    <div style={{ fontSize: '28px', fontWeight: 800, color: '#166534' }}>₹ {student.amountReceived || 0}</div>
+                                </div>
+                                <div style={{ padding: '20px', borderRadius: '12px', background: '#fee2e2', border: '1px solid #fecaca' }}>
+                                    <div style={{ fontSize: '14px', color: '#ef4444', fontWeight: 600, marginBottom: '5px' }}>Remaining Due</div>
+                                    <div style={{ fontSize: '28px', fontWeight: 800, color: '#991b1b' }}>₹ {student.dueFees !== undefined ? student.dueFees : ((student.fee || 0) - (student.amountReceived || 0))}</div>
+                                </div>
+                            </div>
+
+                            {/* Pay Fee Form */}
+                            <div style={{ padding: '25px', border: '1px solid #e5e7eb', borderRadius: '12px', background: '#f9fafb' }}>
+                                <h3 style={{ margin: '0 0 20px 0', fontSize: '18px', color: '#374151' }}>Record New Payment</h3>
+                                <div style={{ display: 'flex', gap: '20px', alignItems: 'flex-end', flexWrap: 'wrap' }}>
+                                    <div style={{ flex: '1 1 200px' }}>
+                                        <label style={{ display: 'block', fontSize: '13px', marginBottom: '8px', color: '#4b5563', fontWeight: '600' }}>Total Fee Amount</label>
+                                        <input type="number" name="fee" value={editForm.fee || ''} onChange={handleEditChange} style={{ width: '100%', padding: '12px', borderRadius: '8px', border: '1px solid #d1d5db', outline: 'none' }} />
+                                    </div>
+                                    <div style={{ flex: '1 1 200px' }}>
+                                        <label style={{ display: 'block', fontSize: '13px', marginBottom: '8px', color: '#4b5563', fontWeight: '600' }}>Payment Amount (₹)</label>
+                                        <input type="number" value={paymentAmount} onChange={(e) => setPaymentAmount(e.target.value)} placeholder="e.g. 5000" style={{ width: '100%', padding: '12px', borderRadius: '8px', border: '1px solid #d1d5db', outline: 'none' }} />
+                                    </div>
+                                    <div style={{ flex: '1 1 200px' }}>
+                                        <label style={{ display: 'block', fontSize: '13px', marginBottom: '8px', color: '#4b5563', fontWeight: '600' }}>Payment Mode</label>
+                                        <select name="paymentMode" value={editForm.paymentMode || ''} onChange={handleEditChange} style={{ width: '100%', padding: '12px', borderRadius: '8px', border: '1px solid #d1d5db', outline: 'none', background: 'white' }}>
+                                            <option value="">Select Mode</option>
+                                            <option value="Cash">Cash</option>
+                                            <option value="Online">Online</option>
+                                            <option value="Cheque">Cheque</option>
+                                        </select>
+                                    </div>
+                                    <div style={{ flex: '1 1 200px' }}>
+                                        <label style={{ display: 'block', fontSize: '13px', marginBottom: '8px', color: '#4b5563', fontWeight: '600' }}>Cheque/Txn No.</label>
+                                        <input type="text" name="chequeNo" value={editForm.chequeNo || ''} onChange={handleEditChange} placeholder="e.g. TXN123456" style={{ width: '100%', padding: '12px', borderRadius: '8px', border: '1px solid #d1d5db', outline: 'none' }} />
+                                    </div>
+                                    <div style={{ flex: '1 1 200px' }}>
+                                        <label style={{ display: 'block', fontSize: '13px', marginBottom: '8px', color: '#4b5563', fontWeight: '600' }}>New Remaining Due</label>
+                                        <div style={{ width: '100%', padding: '12px', borderRadius: '8px', border: '1px solid #d1d5db', background: '#f3f4f6', color: '#4b5563', fontWeight: '600' }}>
+                                            {(Number(editForm.fee) || 0) - ((Number(student.amountReceived) || 0) + (Number(paymentAmount) || 0))}
+                                        </div>
+                                    </div>
+                                    <button onClick={handleFeePayment} style={{ background: '#10b981', color: 'white', border: 'none', padding: '12px 24px', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer', transition: 'background 0.2s', flex: '1 1 200px' }}>
+                                        Confirm Payment
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                </div>
+            </div>
+        </div>
+    );
 };
 
 

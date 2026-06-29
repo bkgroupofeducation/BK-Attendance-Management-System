@@ -119,6 +119,33 @@ function saveLocalUsers(users) {
 }
 
 // --- Database Schemas & Models ---
+function getExpectedWorkingHours(timingStr) {
+  if (!timingStr) return 8; // Default 8 hours
+  const matchRange = timingStr.match(/(\d{1,2})(?::(\d{2}))?\s*(AM|PM)\s*-\s*(\d{1,2})(?::(\d{2}))?\s*(AM|PM)/i);
+  if (matchRange) {
+    let startH = parseInt(matchRange[1], 10);
+    const startM = parseInt(matchRange[2] || '0', 10);
+    const startAmpm = matchRange[3].toUpperCase();
+    let endH = parseInt(matchRange[4], 10);
+    const endM = parseInt(matchRange[5] || '0', 10);
+    const endAmpm = matchRange[6].toUpperCase();
+
+    if (startAmpm === 'PM' && startH !== 12) startH += 12;
+    if (startAmpm === 'AM' && startH === 12) startH = 0;
+    if (endAmpm === 'PM' && endH !== 12) endH += 12;
+    if (endAmpm === 'AM' && endH === 12) endH = 0;
+
+    let startTotalMins = startH * 60 + startM;
+    let endTotalMins = endH * 60 + endM;
+
+    if (endTotalMins < startTotalMins) {
+      endTotalMins += 24 * 60;
+    }
+    return (endTotalMins - startTotalMins) / 60;
+  }
+  return 8; // Default fallback
+}
+
 const userSchema = new mongoose.Schema({
   id: { type: Number, required: true, unique: true },
   name: { type: String, required: true },
@@ -612,7 +639,7 @@ app.put('/api/users/:id', async (req, res) => {
   }
   try {
     let updateData = { ...req.body };
-    
+
     // Handle base64 photo upload during edit
     if (updateData.photo && updateData.photo.startsWith('data:image')) {
       const matches = updateData.photo.match(/^data:image\/([a-zA-Z0-9+]+);base64,(.+)$/);
@@ -666,7 +693,7 @@ app.get('/api/attendance/student/:fingerprint_id', async (req, res) => {
 
   try {
     // Match fingerprint_id even if it has trailing spaces in the DB
-    const student = await User.findOne({ 
+    const student = await User.findOne({
       $or: [
         { fingerprint_id: fingerprint_id },
         { fingerprint_id: new RegExp('^' + String(fingerprint_id).trim() + '\\s*$', 'i') }
@@ -746,7 +773,7 @@ app.put('/api/attendance/update', async (req, res) => {
     const parseTime = (timeStr) => {
       const match = timeStr.trim().match(/^(\d{1,2}):(\d{2})\s*(am|pm)$/i);
       if (!match) return null;
-      let [ , hours, minutes, period ] = match;
+      let [, hours, minutes, period] = match;
       hours = parseInt(hours);
       if (period.toLowerCase() === 'pm' && hours < 12) hours += 12;
       if (period.toLowerCase() === 'am' && hours === 12) hours = 0;
@@ -773,12 +800,12 @@ app.put('/api/attendance/update', async (req, res) => {
         punches[0].deviceSn = punches[0].deviceSn === 'MANUAL' ? 'MANUAL' : punches[0].deviceSn + ' (Edited)';
         await punches[0].save();
       }
-      
+
       if (parsedOutTime) {
         const lastPunch = punches[punches.length - 1];
         if (punches.length === 1 && inTime && outTime) {
-           // Only 1 punch exists, and we are setting both inTime and outTime -> need to create outTime punch
-           await new Punch({ userId, timestamp: parsedOutTime, deviceSn: 'MANUAL', direction: 'out' }).save();
+          // Only 1 punch exists, and we are setting both inTime and outTime -> need to create outTime punch
+          await new Punch({ userId, timestamp: parsedOutTime, deviceSn: 'MANUAL', direction: 'out' }).save();
         } else {
           lastPunch.timestamp = parsedOutTime;
           lastPunch.deviceSn = lastPunch.deviceSn === 'MANUAL' ? 'MANUAL' : lastPunch.deviceSn + ' (Edited)';
@@ -845,9 +872,9 @@ app.get('/api/admin/dashboard', async (req, res) => {
     });
 
     const userIds = Object.keys(punchesByUser);
-    
+
     const cleanUserIds = userIds.map(u => String(u).trim());
-    
+
     // Fetch all needed users in one query to avoid N+1 bottleneck
     const matchedUsers = await User.find({
       $or: [
@@ -885,16 +912,16 @@ app.get('/api/admin/dashboard', async (req, res) => {
     const todayAttendPercent = totalUsers > 0 ? Math.round((recentAttendance.length / totalUsers) * 100) : 0;
 
     const livePunchesRaw = todaysPunches.slice(0, 10).map(p => {
-        const u = userMap[String(p.userId)];
-        return {
-            id: p._id,
-            userId: p.userId,
-            userName: u ? u.name : `User ${p.userId}`,
-            userPhoto: u ? u.photo : null,
-            time: p.timestamp.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', second: '2-digit' }).toLowerCase(),
-            deviceSn: p.deviceSn || 'Bio System (x 2006)',
-            verifyMode: p.verifyMode || '1'
-        };
+      const u = userMap[String(p.userId)];
+      return {
+        id: p._id,
+        userId: p.userId,
+        userName: u ? u.name : `User ${p.userId}`,
+        userPhoto: u ? u.photo : null,
+        time: p.timestamp.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', second: '2-digit' }).toLowerCase(),
+        deviceSn: p.deviceSn || 'Bio System (x 2006)',
+        verifyMode: p.verifyMode || '1'
+      };
     });
 
     res.json({
@@ -982,12 +1009,12 @@ app.put('/api/users/:id', async (req, res) => {
   try {
     const id = req.params.id;
     const updateData = req.body;
-    
+
     console.log(`[PUT /api/users/${id}] Attempting update. ID received: "${id}"`);
     if (updateData._id) {
       delete updateData._id;
     }
-    
+
     if (mongoose.connection.readyState === 1) {
       // Find by exact string or regex for trailing spaces
       const user = await User.findOneAndUpdate(
@@ -996,8 +1023,8 @@ app.put('/api/users/:id', async (req, res) => {
         { new: true }
       );
       if (!user) {
-         console.log(`[PUT /api/users/${id}] User not found.`);
-         return res.status(404).json({ error: 'User not found' });
+        console.log(`[PUT /api/users/${id}] User not found.`);
+        return res.status(404).json({ error: 'User not found' });
       }
       console.log(`[PUT /api/users/${id}] User updated successfully.`);
       return res.json({ success: true, user });
@@ -1048,7 +1075,7 @@ app.get('/api/staff/payroll-summary', async (req, res) => {
     if (mongoose.connection.readyState === 1) {
       staff = await User.find({ role: { $in: ['teacher', 'staff'] } });
     }
-    
+
     // Offline fallback or empty DB fallback
     if (staff.length === 0) {
       const demoLogRupal = [];
@@ -1056,17 +1083,17 @@ app.get('/api/staff/payroll-summary', async (req, res) => {
       const demoLogPatel = [];
       const nowDt = new Date();
       for (let i = 1; i <= nowDt.getDate(); i++) {
-         const iterDate = new Date(nowDt.getFullYear(), nowDt.getMonth(), i);
-         const displayDate = iterDate.toLocaleDateString('en-GB', { day: '2-digit', month: 'short' });
-         if (iterDate.getDay() === 0) {
-            demoLogRupal.push({ date: displayDate, status: 'Sunday', inTime: '--:--', outTime: '--:--', workingHours: '--' });
-            demoLogSakshi.push({ date: displayDate, status: 'Sunday', inTime: '--:--', outTime: '--:--', workingHours: '--' });
-            demoLogPatel.push({ date: displayDate, status: 'Sunday', inTime: '--:--', outTime: '--:--', workingHours: '--' });
-         } else {
-            demoLogRupal.push({ date: displayDate, status: 'Present', inTime: '08:50 AM', outTime: '05:10 PM', workingHours: '8h 20m' });
-            demoLogSakshi.push(i % 4 === 0 ? { date: displayDate, status: 'Absent', inTime: '--:--', outTime: '--:--', workingHours: '--' } : { date: displayDate, status: 'Late', inTime: '09:25 AM', outTime: '05:00 PM', workingHours: '7h 35m' });
-            demoLogPatel.push(i % 3 === 0 ? { date: displayDate, status: 'Absent', inTime: '--:--', outTime: '--:--', workingHours: '--' } : { date: displayDate, status: 'Present', inTime: '08:58 AM', outTime: '04:55 PM', workingHours: '7h 57m' });
-         }
+        const iterDate = new Date(nowDt.getFullYear(), nowDt.getMonth(), i);
+        const displayDate = iterDate.toLocaleDateString('en-GB', { day: '2-digit', month: 'short' });
+        if (iterDate.getDay() === 0) {
+          demoLogRupal.push({ date: displayDate, status: 'Sunday', inTime: '--:--', outTime: '--:--', workingHours: '--' });
+          demoLogSakshi.push({ date: displayDate, status: 'Sunday', inTime: '--:--', outTime: '--:--', workingHours: '--' });
+          demoLogPatel.push({ date: displayDate, status: 'Sunday', inTime: '--:--', outTime: '--:--', workingHours: '--' });
+        } else {
+          demoLogRupal.push({ date: displayDate, status: 'Present', inTime: '08:50 AM', outTime: '05:10 PM', workingHours: '8h 20m' });
+          demoLogSakshi.push(i % 4 === 0 ? { date: displayDate, status: 'Absent', inTime: '--:--', outTime: '--:--', workingHours: '--' } : { date: displayDate, status: 'Late', inTime: '09:25 AM', outTime: '05:00 PM', workingHours: '7h 35m' });
+          demoLogPatel.push(i % 3 === 0 ? { date: displayDate, status: 'Absent', inTime: '--:--', outTime: '--:--', workingHours: '--' } : { date: displayDate, status: 'Present', inTime: '08:58 AM', outTime: '04:55 PM', workingHours: '7h 57m' });
+        }
       }
       demoLogRupal.reverse();
       demoLogSakshi.reverse();
@@ -1079,11 +1106,11 @@ app.get('/api/staff/payroll-summary', async (req, res) => {
         { id: 69, name: 'Sakshi', role: 'staff', profession: 'N/A', salary: 0, fingerprint_id: '69', status: 'Late', inTime: '09:15 AM', outTime: '--:--', workingHours: '--', lateMinutes: 15, dayPay: 0, monthPay: 0, daysPresent: 0, absentDates: [], monthlyLog: demoLogSakshi }
       ]);
     }
-    
+
     const now = new Date();
     const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
     const endOfToday = new Date(startOfToday.getTime() + 24 * 60 * 60 * 1000 - 1);
-    
+
     const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
     const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
 
@@ -1092,37 +1119,37 @@ app.get('/api/staff/payroll-summary', async (req, res) => {
 
     const summary = staff.map(user => {
       const uId = String(user.fingerprint_id) || String(user.id);
-      const userTodayPunches = todaysPunches.filter(p => String(p.userId) === uId).sort((a,b) => a.timestamp - b.timestamp);
-      const userMonthPunches = monthPunches.filter(p => String(p.userId) === uId).sort((a,b) => a.timestamp - b.timestamp);
+      const userTodayPunches = todaysPunches.filter(p => String(p.userId) === uId).sort((a, b) => a.timestamp - b.timestamp);
+      const userMonthPunches = monthPunches.filter(p => String(p.userId) === uId).sort((a, b) => a.timestamp - b.timestamp);
 
       // Status for today
       let status = 'Absent';
       let inTime = null;
       let outTime = null;
       let lateMinutes = 0;
-      
+
       const expectedTimeStr = user.timing || '08:00'; // fallback
       const match = expectedTimeStr.match(/(\d+):(\d+)/) || expectedTimeStr.match(/(\d+)\s*(AM|PM)/i);
       let expectedH = 8, expectedM = 0;
       if (match && match.length === 3 && (match[2].toUpperCase() === 'AM' || match[2].toUpperCase() === 'PM')) {
-          expectedH = parseInt(match[1]);
-          if (expectedH === 12 && match[2].toUpperCase() === 'AM') expectedH = 0;
-          if (expectedH !== 12 && match[2].toUpperCase() === 'PM') expectedH += 12;
+        expectedH = parseInt(match[1]);
+        if (expectedH === 12 && match[2].toUpperCase() === 'AM') expectedH = 0;
+        if (expectedH !== 12 && match[2].toUpperCase() === 'PM') expectedH += 12;
       } else if (match && match.length === 3) {
-          expectedH = parseInt(match[1]);
-          expectedM = parseInt(match[2]);
+        expectedH = parseInt(match[1]);
+        expectedM = parseInt(match[2]);
       }
 
       if (userTodayPunches.length > 0) {
         status = 'Present';
         inTime = userTodayPunches[0].timestamp;
         if (userTodayPunches.length > 1) {
-           outTime = userTodayPunches[userTodayPunches.length - 1].timestamp;
+          outTime = userTodayPunches[userTodayPunches.length - 1].timestamp;
         }
-        
+
         const expectedDate = new Date(inTime);
         expectedDate.setHours(expectedH, expectedM, 0, 0);
-        
+
         // Late if arrived > 15 mins after expected
         const lateMs = inTime.getTime() - (expectedDate.getTime() + 15 * 60000);
         if (lateMs > 0) {
@@ -1134,7 +1161,7 @@ app.get('/api/staff/payroll-summary', async (req, res) => {
       // Calculate Pay
       const baseSalary = user.salary || 0;
       const dailyRate = baseSalary > 0 ? baseSalary / 30 : 0;
-      
+
       let dayPay = status !== 'Absent' ? dailyRate : 0;
       // Deduct penalty for late
       if (status === 'Late') {
@@ -1153,9 +1180,9 @@ app.get('/api/staff/payroll-summary', async (req, res) => {
       const monthlyLog = [];
       const punchesByDateStr = {};
       userMonthPunches.forEach(p => {
-         const dateStr = new Date(p.timestamp).toDateString();
-         if (!punchesByDateStr[dateStr]) punchesByDateStr[dateStr] = [];
-         punchesByDateStr[dateStr].push(p.timestamp);
+        const dateStr = new Date(p.timestamp).toDateString();
+        if (!punchesByDateStr[dateStr]) punchesByDateStr[dateStr] = [];
+        punchesByDateStr[dateStr].push(p.timestamp);
       });
 
       const todayNum = now.getDate();
@@ -1163,36 +1190,54 @@ app.get('/api/staff/payroll-summary', async (req, res) => {
         const iterDate = new Date(now.getFullYear(), now.getMonth(), d);
         const iterDateStr = iterDate.toDateString();
         const displayDate = iterDate.toLocaleDateString('en-GB', { day: '2-digit', month: 'short' });
-        
+
         let dailyStatus = 'Absent';
         let dInTime = '--:--';
         let dOutTime = '--:--';
         let dWorkingHours = '--';
-        
+
         if (iterDate.getDay() === 0) {
-            dailyStatus = 'Sunday';
+          dailyStatus = 'Sunday';
         } else if (punchesByDateStr[iterDateStr]) {
-            dailyStatus = 'Present';
-            const dayPunches = punchesByDateStr[iterDateStr];
-            dayPunches.sort((a, b) => a - b);
-            const firstP = dayPunches[0];
-            dInTime = firstP.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-            if (dayPunches.length > 1) {
-                const lastP = dayPunches[dayPunches.length - 1];
-                dOutTime = lastP.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-                const diffMs = lastP - firstP;
-                dWorkingHours = `${Math.floor(diffMs / 3600000)}h ${Math.floor((diffMs % 3600000) / 60000)}m`;
-            }
+          dailyStatus = 'Present';
+          daysPresentCount++;
+          const dayPunches = punchesByDateStr[iterDateStr];
+          dayPunches.sort((a, b) => a - b);
+          const firstP = dayPunches[0];
+          dInTime = firstP.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' });
+
+          const dExpectedDate = new Date(firstP);
+          dExpectedDate.setHours(expectedH, expectedM, 0, 0);
+
+          // Late if arrived > 5 mins after expected
+          const dLateMs = firstP.getTime() - (dExpectedDate.getTime() + 5 * 60000);
+          if (dLateMs > 0) {
+            dailyStatus = 'Late';
+            dLateMinutes = Math.floor(dLateMs / 60000);
+          }
+
+          dPay = dailyRate;
+          if (dailyStatus === 'Late') {
+            const penalty = Math.min((dLateMinutes * 5), dailyRate * 0.5); // Example penalty
+            dPay = Math.max(0, dPay - penalty);
+          }
+
+          if (dayPunches.length > 1) {
+            const lastP = dayPunches[dayPunches.length - 1];
+            dOutTime = lastP.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' });
+            const diffMs = lastP - firstP;
+            dWorkingHours = `${Math.floor(diffMs / 3600000)}h ${Math.floor((diffMs % 3600000) / 60000)}m`;
+          }
         } else {
-            absentDates.push(displayDate);
+          absentDates.push(displayDate);
         }
 
         monthlyLog.push({
-            date: displayDate,
-            status: dailyStatus,
-            inTime: dInTime,
-            outTime: dOutTime,
-            workingHours: dWorkingHours
+          date: displayDate,
+          status: dailyStatus,
+          inTime: dInTime,
+          outTime: dOutTime,
+          workingHours: dWorkingHours
         });
       }
       monthlyLog.reverse();
