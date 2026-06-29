@@ -6,7 +6,6 @@ const { Server } = require('socket.io');
 const mongoose = require('mongoose');
 const fs = require('fs');
 const path = require('path');
-const excel = require('exceljs');
 
 const app = express();
 const server = http.createServer(app);
@@ -30,8 +29,9 @@ app.use('/iclock', (req, res, next) => {
   }
 });
 
-// Parse JSON body for all standard API requests
-app.use(express.json());
+// Parse JSON body for all standard API requests with a larger limit for images
+app.use(express.json({ limit: '50mb' }));
+app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
 // Initialize Socket.io Server
 const io = new Server(server, {
@@ -137,6 +137,8 @@ const userSchema = new mongoose.Schema({
   marks10th: { type: String },
   marks12th: { type: String },
   address: { type: String },
+  fatherName: { type: String },
+  motherName: { type: String },
   branch: { type: String },
   courses: { type: [String] },
   fee: { type: Number },
@@ -456,11 +458,12 @@ app.post(['/iclock/cdata', '/iclock/cdata.aspx'], async (req, res) => {
         // Try to resolve user name and photo from DB
         let userName = `User ${userId}`;
         let userPhoto = null;
+        let dbUser = null;
         if (mongoose.connection.readyState === 1) {
           try {
-            let dbUser = await User.findOne({ id: parseInt(userId) });
-            if (!dbUser) {
-              dbUser = await User.findOne({ fingerprint_id: String(userId) });
+            dbUser = await User.findOne({ fingerprint_id: String(userId) });
+            if (!dbUser && !isNaN(parseInt(userId))) {
+              dbUser = await User.findOne({ id: parseInt(userId) });
             }
             if (dbUser) {
               userName = dbUser.name;
@@ -469,10 +472,37 @@ app.post(['/iclock/cdata', '/iclock/cdata.aspx'], async (req, res) => {
           } catch (e) { /* ignore */ }
         } else {
           const localUsers = getLocalUsers();
-          const dbUser = localUsers.find(u => u.id === parseInt(userId) || String(u.id) === String(userId) || u.fingerprint_id === String(userId));
+          dbUser = localUsers.find(u => String(u.fingerprint_id) === String(userId));
+          if (!dbUser) {
+            dbUser = localUsers.find(u => String(u.id) === String(userId));
+          }
           if (dbUser) {
             userName = dbUser.name;
             userPhoto = dbUser.photo;
+          }
+        }
+
+        let punchStatus = 'Present';
+        if (dbUser) {
+          const expectedTimeStr = dbUser.timing || '08:00';
+          const match = expectedTimeStr.match(/(\d+):(\d+)/) || expectedTimeStr.match(/(\d+)\s*(AM|PM)/i);
+          let expectedH = 8, expectedM = 0;
+          if (match && match.length === 3 && (match[2].toUpperCase() === 'AM' || match[2].toUpperCase() === 'PM')) {
+            expectedH = parseInt(match[1]);
+            if (expectedH === 12 && match[2].toUpperCase() === 'AM') expectedH = 0;
+            if (expectedH !== 12 && match[2].toUpperCase() === 'PM') expectedH += 12;
+          } else if (match && match.length === 3) {
+            expectedH = parseInt(match[1]);
+            expectedM = parseInt(match[2]);
+          }
+
+          const expectedDate = new Date(timestamp);
+          expectedDate.setHours(expectedH, expectedM, 0, 0);
+
+          // Late if arrived > 5 mins after expected
+          const lateMs = new Date(timestamp).getTime() - (expectedDate.getTime() + 5 * 60000);
+          if (lateMs > 0) {
+            punchStatus = 'Late';
           }
         }
 
@@ -480,6 +510,7 @@ app.post(['/iclock/cdata', '/iclock/cdata.aspx'], async (req, res) => {
           userId,
           userName,
           userPhoto,
+          status: punchStatus,
           timestamp: new Date(timestamp).toISOString(),
           deviceSn: SN || 'NYU7260401606',
           verifyMode
@@ -604,34 +635,6 @@ app.post('/api/users/enroll', async (req, res) => {
   }
 });
 
-// Update User
-app.put('/api/users/:id', async (req, res) => {
-  const { id } = req.params;
-  if (mongoose.connection.readyState !== 1) {
-    return res.status(503).json({ error: 'Database offline' });
-  }
-  try {
-    const updatedUser = await User.findOneAndUpdate({ id: parseInt(id) }, req.body, { new: true });
-    res.json({ success: true, user: updatedUser });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// Delete User
-app.delete('/api/users/:id', async (req, res) => {
-  const { id } = req.params;
-  if (mongoose.connection.readyState !== 1) {
-    return res.status(503).json({ error: 'Database offline' });
-  }
-  try {
-    await User.findOneAndDelete({ id: parseInt(id) });
-    res.json({ success: true });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
 // Get Student Attendance History (Calculated In/Out)
 app.get('/api/attendance/student/:fingerprint_id', async (req, res) => {
   const { fingerprint_id } = req.params;
@@ -646,13 +649,7 @@ app.get('/api/attendance/student/:fingerprint_id', async (req, res) => {
   }
 
   try {
-    // Match fingerprint_id even if it has trailing spaces in the DB
-    const student = await User.findOne({ 
-      $or: [
-        { fingerprint_id: fingerprint_id },
-        { fingerprint_id: new RegExp('^' + String(fingerprint_id).trim() + '\\s*$', 'i') }
-      ]
-    });
+    const student = await User.findOne({ fingerprint_id });
     const punches = await Punch.find({ userId: fingerprint_id }).sort({ timestamp: 1 });
 
     // Group by Date (YYYY-MM-DD)
@@ -667,29 +664,93 @@ app.get('/api/attendance/student/:fingerprint_id', async (req, res) => {
     let totalEntriesAllTime = 0;
     let totalMsAllTime = 0;
 
-    for (const [dateStr, dayPunches] of Object.entries(grouped)) {
-      // Calculate daily metrics
-      const firstIn = dayPunches[0].timestamp;
-      const lastOut = dayPunches[dayPunches.length - 1].timestamp;
-      const entryCount = Math.max(1, Math.floor(dayPunches.length / 2)); // rough estimate if missing out punches
+    const reqMonth = req.query.month; // 1-12
+    const reqYear = req.query.year;
 
-      let durationMs = lastOut.getTime() - firstIn.getTime();
-      // If only one punch, duration is 0
-      if (dayPunches.length === 1) durationMs = 0;
+    const now = new Date();
+    let targetYear = (reqYear && reqYear !== 'undefined') ? parseInt(reqYear) : now.getFullYear();
+    let targetMonth = (reqMonth && reqMonth !== 'undefined') ? parseInt(reqMonth) - 1 : now.getMonth();
 
-      totalEntriesAllTime += entryCount;
-      totalMsAllTime += durationMs;
+    let daysInMonth = new Date(targetYear, targetMonth + 1, 0).getDate();
+    let endDay = daysInMonth;
+    if (targetYear === now.getFullYear() && targetMonth === now.getMonth()) {
+      endDay = now.getDate();
+    }
+    console.log("Attendance API called:", { reqMonth, reqYear, targetYear, targetMonth, daysInMonth, endDay });
 
-      records.push({
-        date: dateStr,
-        firstIn: firstIn.toLocaleTimeString('en-IN'),
-        lastOut: dayPunches.length > 1 ? lastOut.toLocaleTimeString('en-IN') : 'N/A',
-        totalEntries: entryCount,
-        durationMinutes: Math.round(durationMs / 60000),
-        durationSeconds: Math.round(durationMs / 1000)
-      });
+    for (let d = 1; d <= endDay; d++) {
+      const iterDate = new Date(targetYear, targetMonth, d);
+
+      const year = iterDate.getFullYear();
+      const month = String(iterDate.getMonth() + 1).padStart(2, '0');
+      const day = String(iterDate.getDate()).padStart(2, '0');
+      const dString = `${year}-${month}-${day}`;
+      const displayDateStr = `${day}/${month}/${year}`;
+
+      const dayPunches = grouped[dString];
+
+      if (dayPunches && dayPunches.length > 0) {
+        dayPunches.sort((a, b) => a.timestamp - b.timestamp);
+        const firstIn = dayPunches[0].timestamp;
+        const lastOut = dayPunches[dayPunches.length - 1].timestamp;
+        const entryCount = Math.max(1, Math.floor(dayPunches.length / 2));
+
+        let durationMs = lastOut.getTime() - firstIn.getTime();
+        if (dayPunches.length === 1) durationMs = 0;
+
+        totalEntriesAllTime += entryCount;
+        totalMsAllTime += durationMs;
+
+        let status = 'Present';
+        if (student) {
+          const expectedTimeStr = student.timing || '08:00';
+          const match = expectedTimeStr.match(/(\d+):(\d+)/) || expectedTimeStr.match(/(\d+)\s*(AM|PM)/i);
+          let expectedH = 8, expectedM = 0;
+          if (match && match.length === 3 && (match[2].toUpperCase() === 'AM' || match[2].toUpperCase() === 'PM')) {
+            expectedH = parseInt(match[1]);
+            if (expectedH === 12 && match[2].toUpperCase() === 'AM') expectedH = 0;
+            if (expectedH !== 12 && match[2].toUpperCase() === 'PM') expectedH += 12;
+          } else if (match && match.length === 3) {
+            expectedH = parseInt(match[1]);
+            expectedM = parseInt(match[2]);
+          }
+
+          const expectedDate = new Date(firstIn);
+          expectedDate.setHours(expectedH, expectedM, 0, 0);
+
+          const lateMs = firstIn.getTime() - (expectedDate.getTime() + 5 * 60000);
+          if (lateMs > 0) {
+            status = 'Late';
+          }
+        }
+
+        records.push({
+          date: displayDateStr,
+          firstIn: firstIn.toLocaleTimeString('en-IN'),
+          lastOut: dayPunches.length > 1 ? lastOut.toLocaleTimeString('en-IN') : 'N/A',
+          status,
+          totalEntries: entryCount,
+          durationMinutes: Math.round(durationMs / 60000),
+          durationSeconds: Math.round(durationMs / 1000)
+        });
+      } else {
+        let status = 'Absent';
+        if (iterDate.getDay() === 0) {
+          status = 'Sunday';
+        }
+        records.push({
+          date: displayDateStr,
+          firstIn: '--:--',
+          lastOut: '--:--',
+          status,
+          totalEntries: 0,
+          durationMinutes: 0,
+          durationSeconds: 0
+        });
+      }
     }
 
+    console.log("Records length before sending:", records.length);
     res.json({
       student: student || { name: `Unknown (${fingerprint_id})`, fingerprint_id },
       summary: {
@@ -702,76 +763,6 @@ app.get('/api/attendance/student/:fingerprint_id', async (req, res) => {
   } catch (err) {
     console.error("Attendance fetch error:", err.message);
     res.status(500).json({ error: err.message });
-  }
-});
-
-// Manually update attendance In Time and Out Time
-app.put('/api/attendance/update', async (req, res) => {
-  try {
-    const { userId, date, inTime, outTime } = req.body;
-    if (!userId || !date) return res.status(400).json({ error: 'userId and date are required' });
-
-    // date is expected as "YYYY-MM-DD"
-    const startDate = new Date(date);
-    startDate.setHours(0, 0, 0, 0);
-    const endDate = new Date(date);
-    endDate.setHours(23, 59, 59, 999);
-
-    const punches = await Punch.find({
-      userId,
-      timestamp: { $gte: startDate, $lte: endDate }
-    }).sort({ timestamp: 1 });
-
-    // Parse incoming times (e.g. "09:54 am")
-    // Convert to Date object on the correct day
-    const parseTime = (timeStr) => {
-      const match = timeStr.trim().match(/^(\d{1,2}):(\d{2})\s*(am|pm)$/i);
-      if (!match) return null;
-      let [ , hours, minutes, period ] = match;
-      hours = parseInt(hours);
-      if (period.toLowerCase() === 'pm' && hours < 12) hours += 12;
-      if (period.toLowerCase() === 'am' && hours === 12) hours = 0;
-      const tDate = new Date(date);
-      tDate.setHours(hours, parseInt(minutes), 0, 0);
-      return tDate;
-    };
-
-    const parsedInTime = inTime ? parseTime(inTime) : null;
-    const parsedOutTime = outTime ? parseTime(outTime) : null;
-
-    if (punches.length === 0) {
-      // Create new punches if none exist
-      if (parsedInTime) {
-        await new Punch({ userId, timestamp: parsedInTime, deviceSn: 'MANUAL', direction: 'in' }).save();
-      }
-      if (parsedOutTime) {
-        await new Punch({ userId, timestamp: parsedOutTime, deviceSn: 'MANUAL', direction: 'out' }).save();
-      }
-    } else {
-      // Modify existing
-      if (parsedInTime) {
-        punches[0].timestamp = parsedInTime;
-        punches[0].deviceSn = punches[0].deviceSn === 'MANUAL' ? 'MANUAL' : punches[0].deviceSn + ' (Edited)';
-        await punches[0].save();
-      }
-      
-      if (parsedOutTime) {
-        const lastPunch = punches[punches.length - 1];
-        if (punches.length === 1 && inTime && outTime) {
-           // Only 1 punch exists, and we are setting both inTime and outTime -> need to create outTime punch
-           await new Punch({ userId, timestamp: parsedOutTime, deviceSn: 'MANUAL', direction: 'out' }).save();
-        } else {
-          lastPunch.timestamp = parsedOutTime;
-          lastPunch.deviceSn = lastPunch.deviceSn === 'MANUAL' ? 'MANUAL' : lastPunch.deviceSn + ' (Edited)';
-          await lastPunch.save();
-        }
-      }
-    }
-
-    res.json({ success: true, message: 'Attendance updated successfully' });
-  } catch (err) {
-    console.error('Failed to update attendance:', err);
-    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -815,6 +806,8 @@ app.get('/api/admin/dashboard', async (req, res) => {
     }).sort({ timestamp: -1 });
 
     const punchedTodayIds = [...new Set(todaysPunches.map(p => p.userId))];
+    const todayAttendCount = punchedTodayIds.length;
+    const todayAttendPercent = totalUsers > 0 ? Math.round((todayAttendCount / totalUsers) * 100) : 0;
 
     const recentAttendance = [];
 
@@ -825,60 +818,50 @@ app.get('/api/admin/dashboard', async (req, res) => {
       punchesByUser[p.userId].push(p);
     });
 
-    const userIds = Object.keys(punchesByUser);
-    
-    // Fetch all needed users in one query to avoid N+1 bottleneck
-    const matchedUsers = await User.find({
-      $or: [
-        { fingerprint_id: { $in: userIds.map(String) } },
-        { id: { $in: userIds.map(u => parseInt(u) || 0) } }
-      ]
-    });
-
-    const userMap = {};
-    matchedUsers.forEach(u => {
-      if (u.fingerprint_id) userMap[String(u.fingerprint_id)] = u;
-      if (u.id) userMap[String(u.id)] = u;
-    });
-
-    for (const userId of userIds) {
+    for (const userId of Object.keys(punchesByUser)) {
       const userPunches = punchesByUser[userId].sort((a, b) => a.timestamp - b.timestamp);
-<<<<<<< HEAD
-      const user = userMap[String(userId)];
-=======
       let user = await User.findOne({ fingerprint_id: String(userId) });
       if (!user) user = await User.findOne({ id: parseInt(userId) || 0 });
->>>>>>> friend/main
+
+      let userStatus = 'Present';
+      if (user) {
+        const expectedTimeStr = user.timing || '08:00';
+        const match = expectedTimeStr.match(/(\d+):(\d+)/) || expectedTimeStr.match(/(\d+)\s*(AM|PM)/i);
+        let expectedH = 8, expectedM = 0;
+        if (match && match.length === 3 && (match[2].toUpperCase() === 'AM' || match[2].toUpperCase() === 'PM')) {
+          expectedH = parseInt(match[1]);
+          if (expectedH === 12 && match[2].toUpperCase() === 'AM') expectedH = 0;
+          if (expectedH !== 12 && match[2].toUpperCase() === 'PM') expectedH += 12;
+        } else if (match && match.length === 3) {
+          expectedH = parseInt(match[1]);
+          expectedM = parseInt(match[2]);
+        }
+
+        const expectedDate = new Date(userPunches[0].timestamp);
+        expectedDate.setHours(expectedH, expectedM, 0, 0);
+
+        // Late if arrived > 5 mins after expected
+        const lateMs = userPunches[0].timestamp.getTime() - (expectedDate.getTime() + 5 * 60000);
+        if (lateMs > 0) {
+          userStatus = 'Late';
+        }
+      }
 
       recentAttendance.push({
-        userId: user ? user.fingerprint_id : userId,
         name: user ? user.name : `User ${userId}`,
         role: user ? user.role : 'user',
         photo: user ? user.photo : null,
         inTime: userPunches[0].timestamp.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
         outTime: userPunches.length > 1 ? userPunches[userPunches.length - 1].timestamp.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : '--:-- --',
-        status: 'Present',
-        latestTime: userPunches[userPunches.length - 1].timestamp
+        status: userStatus,
+        latestTime: userPunches[userPunches.length - 1].timestamp,
+        firstTime: userPunches[0].timestamp,
+        lastTime: userPunches.length > 1 ? userPunches[userPunches.length - 1].timestamp : null
       });
     }
 
     // Sort by latest punch descending
     recentAttendance.sort((a, b) => b.latestTime - a.latestTime);
-
-    const todayAttendPercent = totalUsers > 0 ? Math.round((recentAttendance.length / totalUsers) * 100) : 0;
-
-    const livePunchesRaw = todaysPunches.slice(0, 10).map(p => {
-        const u = userMap[String(p.userId)];
-        return {
-            id: p._id,
-            userId: p.userId,
-            userName: u ? u.name : `User ${p.userId}`,
-            userPhoto: u ? u.photo : null,
-            time: p.timestamp.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', second: '2-digit' }).toLowerCase(),
-            deviceSn: p.deviceSn || 'Bio System (x 2006)',
-            verifyMode: p.verifyMode || '1'
-        };
-    });
 
     res.json({
       stats: {
@@ -889,8 +872,7 @@ app.get('/api/admin/dashboard', async (req, res) => {
         activeTeachers: await User.countDocuments({ role: 'teacher' }),
         totalStudents: await User.countDocuments({ role: 'student' })
       },
-      recentAttendance,
-      livePunches: livePunchesRaw
+      recentAttendance
     });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -913,6 +895,30 @@ app.get('/api/users', async (req, res) => {
   try {
     const users = await User.find({}).sort({ id: 1 });
     res.json(users);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Fetch user mapping (fingerprint_id & id -> name)
+app.get('/api/users/map', async (req, res) => {
+  const map = {};
+  if (mongoose.connection.readyState !== 1) {
+    const localUsers = getLocalUsers();
+    localUsers.forEach(u => {
+      if (u.id) map[String(u.id)] = u.name;
+      if (u.fingerprint_id) map[String(u.fingerprint_id)] = u.name;
+    });
+    return res.json(map);
+  }
+
+  try {
+    const users = await User.find({});
+    users.forEach(u => {
+      if (u.id) map[String(u.id)] = u.name;
+      if (u.fingerprint_id) map[String(u.fingerprint_id)] = u.name;
+    });
+    res.json(map);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -959,18 +965,17 @@ app.post('/api/users', async (req, res) => {
 });
 
 
-
 // Update full user profile (including fees)
 app.put('/api/users/:id', async (req, res) => {
   try {
     const id = req.params.id;
     const updateData = req.body;
-    
+
     console.log(`[PUT /api/users/${id}] Attempting update. ID received: "${id}"`);
     if (updateData._id) {
       delete updateData._id;
     }
-    
+
     if (mongoose.connection.readyState === 1) {
       // Find by exact string or regex for trailing spaces
       const user = await User.findOneAndUpdate(
@@ -979,8 +984,8 @@ app.put('/api/users/:id', async (req, res) => {
         { new: true }
       );
       if (!user) {
-         console.log(`[PUT /api/users/${id}] User not found.`);
-         return res.status(404).json({ error: 'User not found' });
+        console.log(`[PUT /api/users/${id}] User not found.`);
+        return res.status(404).json({ error: 'User not found' });
       }
       console.log(`[PUT /api/users/${id}] User updated successfully.`);
       return res.json({ success: true, user });
@@ -1031,7 +1036,7 @@ app.get('/api/staff/payroll-summary', async (req, res) => {
     if (mongoose.connection.readyState === 1) {
       staff = await User.find({ role: { $in: ['teacher', 'staff'] } });
     }
-    
+
     // Offline fallback or empty DB fallback
     if (staff.length === 0) {
       const demoLogRupal = [];
@@ -1039,17 +1044,17 @@ app.get('/api/staff/payroll-summary', async (req, res) => {
       const demoLogPatel = [];
       const nowDt = new Date();
       for (let i = 1; i <= nowDt.getDate(); i++) {
-         const iterDate = new Date(nowDt.getFullYear(), nowDt.getMonth(), i);
-         const displayDate = iterDate.toLocaleDateString('en-GB', { day: '2-digit', month: 'short' });
-         if (iterDate.getDay() === 0) {
-            demoLogRupal.push({ date: displayDate, status: 'Sunday', inTime: '--:--', outTime: '--:--', workingHours: '--' });
-            demoLogSakshi.push({ date: displayDate, status: 'Sunday', inTime: '--:--', outTime: '--:--', workingHours: '--' });
-            demoLogPatel.push({ date: displayDate, status: 'Sunday', inTime: '--:--', outTime: '--:--', workingHours: '--' });
-         } else {
-            demoLogRupal.push({ date: displayDate, status: 'Present', inTime: '08:50 AM', outTime: '05:10 PM', workingHours: '8h 20m' });
-            demoLogSakshi.push(i % 4 === 0 ? { date: displayDate, status: 'Absent', inTime: '--:--', outTime: '--:--', workingHours: '--' } : { date: displayDate, status: 'Late', inTime: '09:25 AM', outTime: '05:00 PM', workingHours: '7h 35m' });
-            demoLogPatel.push(i % 3 === 0 ? { date: displayDate, status: 'Absent', inTime: '--:--', outTime: '--:--', workingHours: '--' } : { date: displayDate, status: 'Present', inTime: '08:58 AM', outTime: '04:55 PM', workingHours: '7h 57m' });
-         }
+        const iterDate = new Date(nowDt.getFullYear(), nowDt.getMonth(), i);
+        const displayDate = iterDate.toLocaleDateString('en-GB', { day: '2-digit', month: 'short' });
+        if (iterDate.getDay() === 0) {
+          demoLogRupal.push({ date: displayDate, status: 'Sunday', inTime: '--:--', outTime: '--:--', workingHours: '--' });
+          demoLogSakshi.push({ date: displayDate, status: 'Sunday', inTime: '--:--', outTime: '--:--', workingHours: '--' });
+          demoLogPatel.push({ date: displayDate, status: 'Sunday', inTime: '--:--', outTime: '--:--', workingHours: '--' });
+        } else {
+          demoLogRupal.push({ date: displayDate, status: 'Present', inTime: '08:50 AM', outTime: '05:10 PM', workingHours: '8h 20m' });
+          demoLogSakshi.push(i % 4 === 0 ? { date: displayDate, status: 'Absent', inTime: '--:--', outTime: '--:--', workingHours: '--' } : { date: displayDate, status: 'Late', inTime: '09:25 AM', outTime: '05:00 PM', workingHours: '7h 35m' });
+          demoLogPatel.push(i % 3 === 0 ? { date: displayDate, status: 'Absent', inTime: '--:--', outTime: '--:--', workingHours: '--' } : { date: displayDate, status: 'Present', inTime: '08:58 AM', outTime: '04:55 PM', workingHours: '7h 57m' });
+        }
       }
       demoLogRupal.reverse();
       demoLogSakshi.reverse();
@@ -1062,11 +1067,11 @@ app.get('/api/staff/payroll-summary', async (req, res) => {
         { id: 69, name: 'Sakshi', role: 'staff', profession: 'N/A', salary: 0, fingerprint_id: '69', status: 'Late', inTime: '09:15 AM', outTime: '--:--', workingHours: '--', lateMinutes: 15, dayPay: 0, monthPay: 0, daysPresent: 0, absentDates: [], monthlyLog: demoLogSakshi }
       ]);
     }
-    
+
     const now = new Date();
     const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
     const endOfToday = new Date(startOfToday.getTime() + 24 * 60 * 60 * 1000 - 1);
-    
+
     const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
     const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
 
@@ -1075,39 +1080,39 @@ app.get('/api/staff/payroll-summary', async (req, res) => {
 
     const summary = staff.map(user => {
       const uId = String(user.fingerprint_id) || String(user.id);
-      const userTodayPunches = todaysPunches.filter(p => String(p.userId) === uId).sort((a,b) => a.timestamp - b.timestamp);
-      const userMonthPunches = monthPunches.filter(p => String(p.userId) === uId).sort((a,b) => a.timestamp - b.timestamp);
+      const userTodayPunches = todaysPunches.filter(p => String(p.userId) === uId).sort((a, b) => a.timestamp - b.timestamp);
+      const userMonthPunches = monthPunches.filter(p => String(p.userId) === uId).sort((a, b) => a.timestamp - b.timestamp);
 
       // Status for today
       let status = 'Absent';
       let inTime = null;
       let outTime = null;
       let lateMinutes = 0;
-      
+
       const expectedTimeStr = user.timing || '08:00'; // fallback
       const match = expectedTimeStr.match(/(\d+):(\d+)/) || expectedTimeStr.match(/(\d+)\s*(AM|PM)/i);
       let expectedH = 8, expectedM = 0;
       if (match && match.length === 3 && (match[2].toUpperCase() === 'AM' || match[2].toUpperCase() === 'PM')) {
-          expectedH = parseInt(match[1]);
-          if (expectedH === 12 && match[2].toUpperCase() === 'AM') expectedH = 0;
-          if (expectedH !== 12 && match[2].toUpperCase() === 'PM') expectedH += 12;
+        expectedH = parseInt(match[1]);
+        if (expectedH === 12 && match[2].toUpperCase() === 'AM') expectedH = 0;
+        if (expectedH !== 12 && match[2].toUpperCase() === 'PM') expectedH += 12;
       } else if (match && match.length === 3) {
-          expectedH = parseInt(match[1]);
-          expectedM = parseInt(match[2]);
+        expectedH = parseInt(match[1]);
+        expectedM = parseInt(match[2]);
       }
 
       if (userTodayPunches.length > 0) {
         status = 'Present';
         inTime = userTodayPunches[0].timestamp;
         if (userTodayPunches.length > 1) {
-           outTime = userTodayPunches[userTodayPunches.length - 1].timestamp;
+          outTime = userTodayPunches[userTodayPunches.length - 1].timestamp;
         }
-        
+
         const expectedDate = new Date(inTime);
         expectedDate.setHours(expectedH, expectedM, 0, 0);
-        
-        // Late if arrived > 15 mins after expected
-        const lateMs = inTime.getTime() - (expectedDate.getTime() + 15 * 60000);
+
+        // Late if arrived > 5 mins after expected
+        const lateMs = inTime.getTime() - (expectedDate.getTime() + 5 * 60000);
         if (lateMs > 0) {
           status = 'Late';
           lateMinutes = Math.floor(lateMs / 60000);
@@ -1117,7 +1122,7 @@ app.get('/api/staff/payroll-summary', async (req, res) => {
       // Calculate Pay
       const baseSalary = user.salary || 0;
       const dailyRate = baseSalary > 0 ? baseSalary / 30 : 0;
-      
+
       let dayPay = status !== 'Absent' ? dailyRate : 0;
       // Deduct penalty for late
       if (status === 'Late') {
@@ -1126,19 +1131,17 @@ app.get('/api/staff/payroll-summary', async (req, res) => {
       }
 
       // Calculate Month Pay
-      // Group month punches by day
-      const daysPresentSet = new Set(userMonthPunches.map(p => new Date(p.timestamp).toDateString()));
-      const daysPresent = daysPresentSet.size;
-      const monthPay = dailyRate * daysPresent;
-
       // Calculate Absent Dates (from start of month up to today, excluding Sundays)
       const absentDates = [];
       const monthlyLog = [];
       const punchesByDateStr = {};
+      let calculatedMonthPay = 0;
+      let daysPresentCount = 0;
+
       userMonthPunches.forEach(p => {
-         const dateStr = new Date(p.timestamp).toDateString();
-         if (!punchesByDateStr[dateStr]) punchesByDateStr[dateStr] = [];
-         punchesByDateStr[dateStr].push(p.timestamp);
+        const dateStr = new Date(p.timestamp).toDateString();
+        if (!punchesByDateStr[dateStr]) punchesByDateStr[dateStr] = [];
+        punchesByDateStr[dateStr].push(p.timestamp);
       });
 
       const todayNum = now.getDate();
@@ -1146,39 +1149,66 @@ app.get('/api/staff/payroll-summary', async (req, res) => {
         const iterDate = new Date(now.getFullYear(), now.getMonth(), d);
         const iterDateStr = iterDate.toDateString();
         const displayDate = iterDate.toLocaleDateString('en-GB', { day: '2-digit', month: 'short' });
-        
+
         let dailyStatus = 'Absent';
         let dInTime = '--:--';
         let dOutTime = '--:--';
         let dWorkingHours = '--';
-        
+        let dLateMinutes = 0;
+        let dPay = 0;
+
         if (iterDate.getDay() === 0) {
-            dailyStatus = 'Sunday';
+          dailyStatus = 'Sunday';
+          dPay = dailyRate; // Sunday pay
         } else if (punchesByDateStr[iterDateStr]) {
-            dailyStatus = 'Present';
-            const dayPunches = punchesByDateStr[iterDateStr];
-            dayPunches.sort((a, b) => a - b);
-            const firstP = dayPunches[0];
-            dInTime = firstP.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-            if (dayPunches.length > 1) {
-                const lastP = dayPunches[dayPunches.length - 1];
-                dOutTime = lastP.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-                const diffMs = lastP - firstP;
-                dWorkingHours = `${Math.floor(diffMs / 3600000)}h ${Math.floor((diffMs % 3600000) / 60000)}m`;
-            }
+          dailyStatus = 'Present';
+          daysPresentCount++;
+          const dayPunches = punchesByDateStr[iterDateStr];
+          dayPunches.sort((a, b) => a - b);
+          const firstP = dayPunches[0];
+          dInTime = firstP.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' });
+
+          const dExpectedDate = new Date(firstP);
+          dExpectedDate.setHours(expectedH, expectedM, 0, 0);
+
+          // Late if arrived > 5 mins after expected
+          const dLateMs = firstP.getTime() - (dExpectedDate.getTime() + 5 * 60000);
+          if (dLateMs > 0) {
+            dailyStatus = 'Late';
+            dLateMinutes = Math.floor(dLateMs / 60000);
+          }
+
+          dPay = dailyRate;
+          if (dailyStatus === 'Late') {
+            const penalty = Math.min((dLateMinutes * 5), dailyRate * 0.5); // Example penalty
+            dPay = Math.max(0, dPay - penalty);
+          }
+
+          if (dayPunches.length > 1) {
+            const lastP = dayPunches[dayPunches.length - 1];
+            dOutTime = lastP.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' });
+            const diffMs = lastP - firstP;
+            dWorkingHours = `${Math.floor(diffMs / 3600000)}h ${Math.floor((diffMs % 3600000) / 60000)}m`;
+          }
         } else {
-            absentDates.push(displayDate);
+          absentDates.push(displayDate);
+          dPay = 0;
         }
 
+        calculatedMonthPay += dPay;
+
         monthlyLog.push({
-            date: displayDate,
-            status: dailyStatus,
-            inTime: dInTime,
-            outTime: dOutTime,
-            workingHours: dWorkingHours
+          date: displayDate,
+          status: dailyStatus,
+          inTime: dInTime,
+          outTime: dOutTime,
+          workingHours: dWorkingHours
         });
       }
       monthlyLog.reverse();
+
+      const daysPresent = daysPresentCount;
+      const monthPay = calculatedMonthPay;
 
       return {
         id: user.id,
@@ -1188,10 +1218,13 @@ app.get('/api/staff/payroll-summary', async (req, res) => {
         profession: user.profession,
         salary: baseSalary,
         fingerprint_id: user.fingerprint_id,
+        photo: user.photo,
         status,
         inTime: inTime ? inTime.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : '--:--',
         outTime: outTime ? outTime.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : '--:--',
         workingHours: (inTime && outTime) ? `${Math.floor((outTime - inTime) / 3600000)}h ${Math.floor(((outTime - inTime) % 3600000) / 60000)}m` : '--',
+        firstTime: inTime || null,
+        lastTime: outTime || null,
         lateMinutes,
         dayPay,
         monthPay,
@@ -1207,7 +1240,6 @@ app.get('/api/staff/payroll-summary', async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
-
 
 // User ID -> Name mapping for Live Sync Feed
 app.get('/api/users/map', async (req, res) => {
@@ -1356,243 +1388,10 @@ app.post('/api/receipts/generate', async (req, res) => {
     res.status(500).json({ error: error.message });
   }
 });
-async function generateMonthSheet(workbook, monthString, department, usersList, PunchModel) {
-  const [year, monthNum] = monthString.split('-');
-  const startDate = new Date(year, parseInt(monthNum) - 1, 1);
-  const endDate = new Date(year, parseInt(monthNum), 0, 23, 59, 59, 999);
-
-  let users = usersList;
-  if (department && department !== 'All' && department !== 'undefined') {
-    if (department === 'Teachers') {
-      users = users.filter(u => u.role && u.role.toLowerCase() === 'teacher');
-    } else if (department === 'Staff') {
-      users = users.filter(u => u.role && u.role.toLowerCase() === 'staff');
-    } else {
-      users = users.filter(u => u.courses && u.courses.includes(department));
-    }
-  }
-
-  const punches = await PunchModel.find({ timestamp: { $gte: startDate, $lte: endDate } }).sort({ timestamp: 1 });
-  const punchesByUser = {};
-  punches.forEach(p => {
-    const uid = String(p.userId);
-    if (!punchesByUser[uid]) punchesByUser[uid] = [];
-    punchesByUser[uid].push(p);
-  });
-
-  const monthName = startDate.toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
-  const sheetName = monthName.replace(/[\*\?\/\\\[\]]/g, ''); // Ensure safe sheet name
-  const worksheet = workbook.addWorksheet(sheetName, {
-    pageSetup: { orientation: 'landscape', paperSize: 9, fitToPage: true, fitToWidth: 1, fitToHeight: 0 }
-  });
-
-  // Setup print header/footer (Admin signature)
-  worksheet.headerFooter.oddFooter = `&LGenerated By:- BioAttend Admin&CAdmin Signature: _______________________&RPage &P of &N`;
-
-  // Global Headers
-  worksheet.mergeCells('A1:AF1');
-  worksheet.getCell('A1').value = 'Dr.Babasaheb Ambedkar Research and Training Institute, ( BARTI) Pune';
-  worksheet.getCell('A1').font = { bold: true, size: 14 };
-  worksheet.getCell('A1').alignment = { horizontal: 'center' };
-
-  worksheet.mergeCells('A2:AF2');
-  worksheet.getCell('A2').value = 'JEE NEET Batch Coaching Programme 2024-26';
-  worksheet.getCell('A2').font = { bold: true, size: 12 };
-  worksheet.getCell('A2').alignment = { horizontal: 'center' };
-
-  worksheet.mergeCells('A3:AF3');
-  worksheet.getCell('A3').value = 'Students Biometric Attendance Format';
-  worksheet.getCell('A3').font = { bold: true, size: 12 };
-  worksheet.getCell('A3').alignment = { horizontal: 'center' };
-
-  worksheet.mergeCells('A4:AF4');
-  worksheet.getCell('A4').value = 'Name Of the Coaching Center- BK Educational and Welfare Society,Nashik';
-  worksheet.getCell('A4').font = { bold: true, size: 12 };
-  worksheet.getCell('A4').alignment = { horizontal: 'center' };
-
-  worksheet.mergeCells('A5:AF5');
-  worksheet.getCell('A5').value = `${startDate.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })} To ${endDate.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}`;
-  worksheet.getCell('A5').font = { bold: true, size: 11 };
-  worksheet.getCell('A5').alignment = { horizontal: 'center' };
-
-  worksheet.mergeCells('A6:AF6');
-  worksheet.getCell('A6').value = `Generated On: ${new Date().toLocaleString('en-IN')}`;
-  worksheet.getCell('A6').font = { bold: true, size: 10 };
-  worksheet.getCell('A6').alignment = { horizontal: 'right' };
-
-  const daysInMonth = endDate.getDate();
-  let currentRow = 8;
-
-  // Header Day Names Row
-  const dayRowValues = ['Day'];
-  const dateRowValues = ['Days'];
-  for (let d = 1; d <= daysInMonth; d++) {
-    dayRowValues.push(`Day${d}`);
-    const cDate = new Date(year, parseInt(monthNum) - 1, d);
-    dateRowValues.push(`${String(d).padStart(2, '0')}-${cDate.toLocaleDateString('en-US', { month: 'short' })}\n${cDate.toLocaleDateString('en-US', { weekday: 'short' })}`);
-  }
-
-  const dayRow = worksheet.getRow(currentRow);
-  dayRow.values = dayRowValues;
-  dayRow.font = { bold: true };
-  currentRow++;
-
-  const dateRow = worksheet.getRow(currentRow);
-  dateRow.values = dateRowValues;
-  dateRow.font = { bold: true, size: 9 };
-  dateRow.alignment = { wrapText: true };
-  currentRow++;
-
-  worksheet.mergeCells(`A${currentRow}:AF${currentRow}`);
-  worksheet.getCell(`A${currentRow}`).value = `Department: ${department && department !== 'All' && department !== 'undefined' ? department : 'All Departments'}`;
-  worksheet.getCell(`A${currentRow}`).font = { bold: true };
-  currentRow++;
-
-  if (users.length === 0) {
-    worksheet.getCell(`A${currentRow}`).value = 'No users found for this department.';
-    return;
-  }
-
-  users.forEach(user => {
-    // User identity row
-    worksheet.mergeCells(`A${currentRow}:J${currentRow}`);
-    worksheet.getCell(`A${currentRow}`).value = `Employee Code:- ${user.fingerprint_id || user.id || 'N/A'}`;
-    worksheet.getCell(`A${currentRow}`).font = { bold: true };
-
-    worksheet.mergeCells(`K${currentRow}:V${currentRow}`);
-    worksheet.getCell(`K${currentRow}`).value = `Employee Name:- ${user.name}`;
-    worksheet.getCell(`K${currentRow}`).font = { bold: true };
-
-    worksheet.mergeCells(`W${currentRow}:AF${currentRow}`);
-    worksheet.getCell(`W${currentRow}`).value = `Designation - ${user.role}`;
-    worksheet.getCell(`W${currentRow}`).font = { bold: true };
-
-    currentRow++;
-
-    // Day1..Day31 Header
-    const uDayRow = worksheet.getRow(currentRow);
-    uDayRow.values = dayRowValues;
-    uDayRow.font = { bold: true };
-    currentRow++;
-
-    const userPunches = punchesByUser[String(user.fingerprint_id)] || punchesByUser[String(user.id)] || [];
-    const punchesByDate = {};
-    userPunches.forEach(p => {
-      const d = p.timestamp.getDate();
-      if (!punchesByDate[d]) punchesByDate[d] = [];
-      punchesByDate[d].push(p);
-    });
-
-    const inTimes = ['In Time'];
-    const outTimes = ['Out Time'];
-    const durations = ['T Duration'];
-    const statuses = ['Status'];
-
-    for (let day = 1; day <= daysInMonth; day++) {
-      const dayPunches = punchesByDate[day] || [];
-
-      let inTime = '00:00';
-      let outTime = '00:00';
-      let tDuration = '00:00';
-      let status = 'A';
-
-      const currentDayDate = new Date(year, parseInt(monthNum) - 1, day);
-      if (currentDayDate.getDay() === 0) { // Sunday
-        status = 'WO';
-      }
-
-      if (dayPunches.length > 0) {
-        const firstPunch = dayPunches[0];
-        const lastPunch = dayPunches[dayPunches.length - 1];
-        inTime = firstPunch.timestamp.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: false });
-        status = 'P';
-
-        if (dayPunches.length > 1) {
-          outTime = lastPunch.timestamp.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: false });
-          const diffMs = lastPunch.timestamp - firstPunch.timestamp;
-          const hours = Math.floor(diffMs / 3600000);
-          const minutes = Math.floor((diffMs % 3600000) / 60000);
-          tDuration = `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
-        }
-      }
-
-      inTimes.push(inTime);
-      outTimes.push(outTime);
-      durations.push(tDuration);
-      statuses.push(status);
-    }
-
-    worksheet.getRow(currentRow).values = inTimes;
-    currentRow++;
-    worksheet.getRow(currentRow).values = outTimes;
-    currentRow++;
-    worksheet.getRow(currentRow).values = durations;
-    currentRow++;
-    worksheet.getRow(currentRow).values = statuses;
-    currentRow++;
-  });
-
-  // Styling columns
-  worksheet.getColumn(1).width = 12;
-  for (let i = 2; i <= 32; i++) {
-    worksheet.getColumn(i).width = 6.5;
-  }
-}
-
-// Export Monthly Attendance Report matching PDF spec
-app.get('/api/attendance/export-monthly', async (req, res) => {
-  try {
-    const { month, department } = req.query; // format: 'YYYY-MM'
-    if (!month) return res.status(400).json({ error: 'Month is required in YYYY-MM format' });
-
-    const workbook = new excel.Workbook();
-    const usersList = await User.find({});
-
-    await generateMonthSheet(workbook, month, department, usersList, Punch);
-
-    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-    res.setHeader('Content-Disposition', `attachment; filename=Attendance_Report_${month}.xlsx`);
-    await workbook.xlsx.write(res);
-    res.end();
-  } catch (err) {
-    console.error('Export Error:', err);
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// Export Yearly Attendance Report (12 Sheets)
-app.get('/api/attendance/export-yearly', async (req, res) => {
-  try {
-    const { year, department } = req.query; // format: 'YYYY'
-    if (!year) return res.status(400).json({ error: 'Year is required in YYYY format' });
-
-    const workbook = new excel.Workbook();
-    const usersList = await User.find({});
-
-    for (let m = 1; m <= 12; m++) {
-      const monthStr = `${year}-${String(m).padStart(2, '0')}`;
-      await generateMonthSheet(workbook, monthStr, department, usersList, Punch);
-    }
-
-    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-    res.setHeader('Content-Disposition', `attachment; filename=Attendance_Report_${year}.xlsx`);
-    await workbook.xlsx.write(res);
-    res.end();
-  } catch (err) {
-    console.error('Export Yearly Error:', err);
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// Catch-all for 404
-app.use((req, res) => {
-  console.log(`[404 NOT FOUND] ${req.method} ${req.originalUrl}`);
-  res.status(404).send(`Cannot ${req.method} ${req.originalUrl}`);
-});
 
 // Start unified server on ALL interfaces so LAN devices (eSSL) can reach it
 server.listen(PORT, '0.0.0.0', () => {
   console.log(`🚀 Unified Backend & ADMS Server is running on http://0.0.0.0:${PORT}`);
-  console.log(`📡 LAN accessible at http://192.168.0.107:${PORT}`);
-  console.log(`🔬 ADMS endpoint: POST http://192.168.0.107:${PORT}/iclock/cdata`);
+  console.log(`📡 LAN accessible at http://192.168.0.102:${PORT}`);
+  console.log(`🔬 ADMS endpoint: POST http://192.168.0.102:${PORT}/iclock/cdata`);
 });
