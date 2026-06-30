@@ -9,7 +9,7 @@ import jsPDF from 'jspdf';
 import 'jspdf-autotable';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 
-const backendHost = '192.168.0.102';
+const backendHost = '192.168.0.106';
 const socket = io(`http://${backendHost}:8080`);
 const AuthContext = React.createContext(null);
 
@@ -335,9 +335,10 @@ const Dashboard = () => {
     const getInitials = (name) => name ? name.split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2) : '??';
 
     const resolvedName = (punch) => {
-        let user = users.find(u => String(u.fingerprint_id) === String(punch.userId));
-        if (!user) user = users.find(u => String(u.id) === String(punch.userId));
-        return user ? user.name : (punch.userName || `User ${punch.userId}`);
+        const punchId = String(punch.userId).trim();
+        let user = users.find(u => String(u.fingerprint_id).trim() === punchId);
+        if (!user) user = users.find(u => String(u.id).trim() === punchId);
+        return user ? user.name : (punch.userName || `User ${punchId}`);
     };
 
     const resolvedPhoto = (punch) => {
@@ -345,8 +346,9 @@ const Dashboard = () => {
         if (punch.userPhoto) {
             photo = punch.userPhoto;
         } else {
-            let user = users.find(u => String(u.fingerprint_id) === String(punch.userId));
-            if (!user) user = users.find(u => String(u.id) === String(punch.userId));
+            const punchId = String(punch.userId).trim();
+            let user = users.find(u => String(u.fingerprint_id).trim() === punchId);
+            if (!user) user = users.find(u => String(u.id).trim() === punchId);
             photo = user ? user.photo : null;
         }
         if (photo) {
