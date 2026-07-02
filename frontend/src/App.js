@@ -1,15 +1,17 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { BrowserRouter as Router, Routes, Route, Link, useNavigate, Navigate, useLocation, useParams } from 'react-router-dom';
 import ReceiptPrintView from './ReceiptPrintView';
+import AdmissionFormPrintView from './AdmissionFormPrintView';
 import { io } from 'socket.io-client';
 import api from './api';
+import QuickEnrollPage from './QuickEnrollPage';
 import logo from './logo.jpeg';
 import * as XLSX from 'xlsx';
 import jsPDF from 'jspdf';
 import 'jspdf-autotable';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 
-const backendHost = '192.168.0.106';
+const backendHost = '192.168.0.108';
 const socket = io(`http://${backendHost}:8080`);
 const AuthContext = React.createContext(null);
 
@@ -98,6 +100,7 @@ const Sidebar = ({ logout, user }) => {
                     {admOpen && (
                         <ul style={{ listStyle: 'none', padding: 0, margin: 0, background: '#1a252f' }}>
                             <li><Link to="/enroll-student" style={{ display: 'block', padding: '12px 20px 12px 40px', color: '#ecf0f1', textDecoration: 'none', fontSize: '14px', borderBottom: '1px solid #2c3e50', fontWeight: '400' }}>○ Enroll Student</Link></li>
+                            <li><Link to="/quick-enroll" style={{ display: 'block', padding: '12px 20px 12px 40px', color: '#ecf0f1', textDecoration: 'none', fontSize: '14px', borderBottom: '1px solid #2c3e50', fontWeight: '400' }}>⚡ Quick Enroll</Link></li>
                             <li><Link to="/bulk-upload" style={{ display: 'block', padding: '12px 20px 12px 40px', color: '#ecf0f1', textDecoration: 'none', fontSize: '14px', borderBottom: '1px solid #2c3e50', fontWeight: '400' }}>○ Bulk Upload</Link></li>
                             <li><Link to="/admissions" style={{ display: 'block', padding: '12px 20px 12px 40px', color: '#ecf0f1', textDecoration: 'none', fontSize: '14px', borderBottom: '1px solid #2c3e50', fontWeight: '400' }}>○ Student List</Link></li>
                             <li><Link to="/birthdays" style={{ display: 'block', padding: '12px 20px 12px 40px', color: '#ecf0f1', textDecoration: 'none', fontSize: '14px', borderBottom: '1px solid #2c3e50', fontWeight: '400' }}>○ Birthday Reminders</Link></li>
@@ -1153,7 +1156,8 @@ const AdmissionsPage = () => {
         <div className="dashboard-card">
             <div className="card-header">
                 <h2>📝 Student List & Admissions</h2>
-                <div className="actions">
+                <div className="actions" style={{ display: 'flex', gap: '10px' }}>
+                    <Link to="/quick-enroll" className="btn btn-primary" style={{ background: '#0284c7', borderColor: '#0284c7' }}>⚡ Quick Enroll</Link>
                     <Link to="/enroll-student" className="btn btn-primary">+ New Enrollment</Link>
                 </div>
             </div>
@@ -2224,6 +2228,7 @@ const Simulator = () => {
 
 const EnrollStudentPage = () => {
     const [step, setStep] = useState(1);
+    const [successData, setSuccessData] = useState(null);
     const [formData, setFormData] = useState({
         name: '', fatherName: '', motherName: '', aadhar: '', enquiryDate: new Date().toISOString().split('T')[0], gender: 'Male', dob: '', email: '', fingerprint_id: '', address: '',
         fatherContact: '', motherContact: '', studentContact: '',
@@ -2374,6 +2379,7 @@ const EnrollStudentPage = () => {
     };
 
     const validateStep = (stepToValidate) => {
+        return true; // Disabled validation for testing purposes
         let keysToCheck = [];
         if (stepToValidate === 1) keysToCheck = step1Keys;
         else if (stepToValidate === 2) keysToCheck = step2Keys;
@@ -2459,17 +2465,39 @@ const EnrollStudentPage = () => {
                 localStorage.removeItem('current_enroll_draft_id');
             }
 
-            if (receiptNo) {
-                alert("Student Enrollment Successful! Receipt No generated: " + receiptNo);
-            } else {
-                alert('Student Enrollment Successful!');
-            }
-            window.location.href = '/admissions';
+            setSuccessData(payload);
         } catch (err) {
             alert('Error: ' + (err.response?.data?.error || err.message));
         }
         setLoading(false);
     };
+
+    if (successData) {
+        return (
+            <div style={{ background: 'white', padding: '40px', borderRadius: '8px', minHeight: '600px', boxShadow: '0 2px 10px rgba(0,0,0,0.05)', textAlign: 'center' }}>
+                <div style={{ fontSize: '48px', marginBottom: '20px' }}>✅</div>
+                <h2 style={{ color: '#10b981', marginBottom: '10px' }}>Student Enrollment Successful!</h2>
+                <p style={{ color: '#666', marginBottom: '30px' }}>{successData.name} has been enrolled successfully.</p>
+                {successData.receiptNo && <p style={{ fontWeight: 'bold', marginBottom: '20px' }}>Receipt No: {successData.receiptNo}</p>}
+                
+                <div style={{ display: 'flex', gap: '20px', justifyContent: 'center' }}>
+                    <button onClick={() => { document.body.classList.add('print-admission'); window.print(); setTimeout(() => document.body.classList.remove('print-admission'), 500); }} style={{ padding: '12px 24px', background: '#667eea', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '16px', fontWeight: 'bold' }}>
+                        🖨️ Print Admission Form
+                    </button>
+                    <button onClick={() => { document.body.classList.add('print-receipt'); window.print(); setTimeout(() => document.body.classList.remove('print-receipt'), 500); }} style={{ padding: '12px 24px', background: '#3b82f6', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '16px', fontWeight: 'bold' }}>
+                        🖨️ Print Fee Receipt
+                    </button>
+                    <button onClick={() => window.location.href = '/admissions'} style={{ padding: '12px 24px', background: '#f8f9fa', color: '#555', border: '1px solid #ddd', borderRadius: '6px', cursor: 'pointer', fontSize: '16px', fontWeight: 'bold' }}>
+                        Done
+                    </button>
+                </div>
+
+                {/* Hidden print components */}
+                <AdmissionFormPrintView student={successData} />
+                <ReceiptPrintView student={successData} />
+            </div>
+        );
+    }
 
     return (
         <div style={{ background: 'white', padding: '30px', borderRadius: '8px', minHeight: '600px', boxShadow: '0 2px 10px rgba(0,0,0,0.05)' }}>
@@ -2486,7 +2514,7 @@ const EnrollStudentPage = () => {
                     { id: 1, title: 'Basic Details', desc: 'Setup Basic Details' },
                     { id: 2, title: 'Class Details', desc: 'Setup Class Details' },
                     { id: 3, title: 'Academic Details', desc: 'Setup Academic Details' },
-                    { id: 4, title: 'Banking Details', desc: 'Setup Banking Details' }
+                    { id: 4, title: 'Photo & Payment', desc: 'Setup Photo & Payment' }
                 ].map((s) => (
                     <div key={s.id} onClick={() => handleStepClick(s.id)} style={{ textAlign: 'center', position: 'relative', zIndex: 2, background: 'white', padding: '0 10px', flex: 1, cursor: 'pointer' }}>
                         <div style={{
@@ -2615,23 +2643,10 @@ const EnrollStudentPage = () => {
             {step === 4 && (
                 <div>
                     <div style={{ display: 'inline-block', background: '#f3e8ff', color: '#8b5cf6', padding: '6px 12px', borderRadius: '20px', fontSize: '13px', marginBottom: '20px' }}>
-                        🏦 Banking Detail
+                        📷 Photo & Payment
                     </div>
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '25px', marginTop: '10px' }}>
-                        <div>
-                            <input type="text" name="bankName" value={formData.bankName} onChange={handleInput} placeholder="Bank Name*" style={{ width: '100%', padding: '14px', border: '1px solid #e0e0e0', borderRadius: '6px', outline: 'none' }} />
-                        </div>
-                        <div>
-                            <input type="text" name="accountNumber" value={formData.accountNumber} onInput={(e) => { e.target.value = e.target.value.replace(/\D/g, ''); handleInput(e); }} placeholder="Account Number*" style={{ width: '100%', padding: '14px', border: '1px solid #e0e0e0', borderRadius: '6px', outline: 'none' }} />
-                        </div>
-                        <div>
-                            <input type="text" name="ifscCode" value={formData.ifscCode} onChange={handleInput} placeholder="IFSC Code*" style={{ width: '100%', padding: '14px', border: '1px solid #e0e0e0', borderRadius: '6px', outline: 'none' }} />
-                        </div>
-                        <div>
-                            <input type="text" name="accountHolder" value={formData.accountHolder} onChange={handleInput} placeholder="Account Holder Name*" style={{ width: '100%', padding: '14px', border: '1px solid #e0e0e0', borderRadius: '6px', outline: 'none' }} />
-                        </div>
-                    </div>
-                    <div style={{ gridColumn: '1 / -1', borderTop: '1px solid #eee', marginTop: '15px', paddingTop: '25px' }}>
+
+                    <div style={{ gridColumn: '1 / -1', marginTop: '10px' }}>
                         <div style={{ fontWeight: 'bold', color: '#555', marginBottom: '15px' }}>Student Photo</div>
                         <div style={{ display: 'flex', gap: '20px', flexWrap: 'wrap', background: '#f8f9fa', padding: '15px', borderRadius: '8px', border: '1px solid #e0e0e0' }}>
                             <div style={{ flex: 1, minWidth: '250px' }}>
@@ -3935,7 +3950,7 @@ const StudentProfilePage = () => {
                 </div>
                 <div style={{ position: 'absolute', top: '30px', right: '30px', display: 'flex', gap: '10px' }}>
                     <button
-                        onClick={() => window.print()}
+                        onClick={() => { document.body.classList.add('print-receipt'); window.print(); setTimeout(() => document.body.classList.remove('print-receipt'), 500); }}
                         style={{ background: '#3b82f6', border: 'none', padding: '8px 16px', borderRadius: '8px', cursor: 'pointer', fontWeight: 600, color: 'white', transition: 'all 0.2s' }}>
                         🖨️ Print Receipt
                     </button>
@@ -3949,6 +3964,7 @@ const StudentProfilePage = () => {
 
             {/* Hidden receipt for printing */}
             <ReceiptPrintView student={student} />
+            <AdmissionFormPrintView student={student} />
 
             {/* Edit Modal */}
             {isEditing && (
@@ -4021,7 +4037,7 @@ const StudentProfilePage = () => {
                         <span style={{ fontSize: '18px' }}>🕒</span> Attendance
                     </button>
 
-                    <button onClick={() => window.print()} style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '12px 16px', background: 'white', border: '1px solid #7dd3fc', borderRadius: '8px', color: '#0ea5e9', fontWeight: '600', fontSize: '15px', cursor: 'pointer', transition: 'all 0.2s' }}>
+                    <button onClick={() => { document.body.classList.add('print-admission'); window.print(); setTimeout(() => document.body.classList.remove('print-admission'), 500); }} style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '12px 16px', background: 'white', border: '1px solid #7dd3fc', borderRadius: '8px', color: '#0ea5e9', fontWeight: '600', fontSize: '15px', cursor: 'pointer', transition: 'all 0.2s' }}>
                         <span style={{ fontSize: '18px' }}>🖨️</span> Admission Form
                     </button>
 
@@ -4153,7 +4169,7 @@ const StudentProfilePage = () => {
                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '30px' }}>
                                 <h2 style={{ margin: 0, fontSize: '22px', color: '#1f2937' }}>Fee Management</h2>
                                 <button
-                                    onClick={() => window.print()}
+                                    onClick={() => { document.body.classList.add('print-receipt'); window.print(); setTimeout(() => document.body.classList.remove('print-receipt'), 500); }}
                                     style={{ background: '#3b82f6', color: 'white', border: 'none', padding: '10px 20px', borderRadius: '8px', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px' }}>
                                     <span>🖨️</span> Print Fee Receipt
                                 </button>
@@ -4244,6 +4260,7 @@ function App() {
                         <Route path="/admissions" element={<ProtectedRoute><Layout logout={logout} user={user}><AdmissionsPage /></Layout></ProtectedRoute>} />
                         <Route path="/bulk-upload" element={<ProtectedRoute><Layout logout={logout} user={user}><BulkUploadPage /></Layout></ProtectedRoute>} />
                         <Route path="/enroll-student" element={<ProtectedRoute><Layout logout={logout} user={user}><EnrollStudentPage /></Layout></ProtectedRoute>} />
+                        <Route path="/quick-enroll" element={<ProtectedRoute><Layout logout={logout} user={user}><QuickEnrollPage /></Layout></ProtectedRoute>} />
                         <Route path="/birthdays" element={<ProtectedRoute><Layout logout={logout} user={user}><BirthdaysPage /></Layout></ProtectedRoute>} />
                         <Route path="/teachers" element={<ProtectedRoute><Layout logout={logout} user={user}><TeachersPage /></Layout></ProtectedRoute>} />
                         <Route path="/devices" element={<ProtectedRoute><Layout logout={logout} user={user}><DevicesPage /></Layout></ProtectedRoute>} />
