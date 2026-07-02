@@ -82,9 +82,8 @@ const ReceiptPrintView = ({ student }) => {
           <div style={{ flex: '0 0 50%', display: 'flex', flexDirection: 'column' }}>
             <div style={{ padding: '4px 8px', fontSize: '11px', borderBottom: borderStyle }}><strong>Cheque/Txn No. :</strong> {student.receiptNo || ''}</div>
             <div style={{ padding: '4px 8px', fontSize: '11px', borderBottom: borderStyle }}><strong>Bank Name :</strong> {student.bankName || ''}</div>
-            <div style={{ padding: '4px 8px', fontSize: '11px', borderBottom: borderStyle }}><strong>Account No. :</strong> {student.accountNumber || ''}</div>
-            <div style={{ padding: '4px 8px', fontSize: '11px', borderBottom: borderStyle }}><strong>IFSC Code :</strong> {student.ifscCode || ''}</div>
-            <div style={{ padding: '4px 8px', fontSize: '11px' }}><strong>Account Holder :</strong> {student.accountHolder || ''}</div>
+            <div style={{ padding: '4px 8px', fontSize: '11px', borderBottom: borderStyle }}><strong>Account No :</strong> {student.accountNumber || ''}</div>
+            <div style={{ padding: '4px 8px', fontSize: '11px' }}><strong>IFSC Code :</strong> {student.ifscCode || ''}</div>
           </div>
         </div>
 
@@ -121,6 +120,9 @@ const ReceiptPrintView = ({ student }) => {
           display: none;
         }
         @media print {
+          body.print-admission .receipt-print-container {
+            display: none !important;
+          }
           @page {
             size: A4;
             margin: 10mm;
@@ -131,10 +133,10 @@ const ReceiptPrintView = ({ student }) => {
             padding: 0 !important;
             overflow: hidden;
           }
-          body * {
+          body.print-receipt * {
             visibility: hidden;
           }
-          .receipt-print-container, .receipt-print-container * {
+          body.print-receipt .receipt-print-container, body.print-receipt .receipt-print-container * {
             visibility: visible;
           }
           .receipt-print-container {

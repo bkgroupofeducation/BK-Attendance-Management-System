@@ -489,7 +489,7 @@ app.post(['/iclock/cdata', '/iclock/cdata.aspx'], async (req, res) => {
           try {
             let dbUser = await User.findOne({ id: parseInt(userId) });
             if (!dbUser) {
-              dbUser = await User.findOne({ fingerprint_id: String(userId) });
+              dbUser = await User.findOne({ fingerprint_id: { $regex: new RegExp(`^\\s*${userId}\\s*$`, 'i') } });
             }
             if (dbUser) {
               userName = dbUser.name;
@@ -498,7 +498,7 @@ app.post(['/iclock/cdata', '/iclock/cdata.aspx'], async (req, res) => {
           } catch (e) { /* ignore */ }
         } else {
           const localUsers = getLocalUsers();
-          const dbUser = localUsers.find(u => u.id === parseInt(userId) || String(u.id) === String(userId) || u.fingerprint_id === String(userId));
+          const dbUser = localUsers.find(u => u.id === parseInt(userId) || String(u.id).trim() === String(userId) || String(u.fingerprint_id).trim() === String(userId));
           if (dbUser) {
             userName = dbUser.name;
             userPhoto = dbUser.photo;
@@ -1364,7 +1364,7 @@ app.post('/api/biometric/webhook', async (req, res) => {
 
   if (mongoose.connection.readyState === 1) {
     try {
-      let dbUser = await User.findOne({ fingerprint_id });
+      let dbUser = await User.findOne({ fingerprint_id: { $regex: new RegExp(`^\\s*${fingerprint_id}\\s*$`, 'i') } });
       if (!dbUser) {
         dbUser = await User.findOne({ id: parseInt(fingerprint_id) });
       }
@@ -1375,7 +1375,7 @@ app.post('/api/biometric/webhook', async (req, res) => {
     } catch (e) { /* ignore */ }
   } else {
     const localUsers = getLocalUsers();
-    const dbUser = localUsers.find(u => u.fingerprint_id === String(fingerprint_id) || String(u.id) === String(fingerprint_id));
+    const dbUser = localUsers.find(u => String(u.fingerprint_id).trim() === String(fingerprint_id).trim() || String(u.id).trim() === String(fingerprint_id).trim());
     if (dbUser) {
       userName = dbUser.name;
       userPhoto = dbUser.photo;
